@@ -157,6 +157,15 @@ export async function insertCloudTask(
   return fromTaskRow(rows[0]);
 }
 
+export async function insertCloudComplex(session: CloudSession, complex: Complex): Promise<Complex> {
+  const rows = await request<ComplexRow[]>('/rest/v1/complexes', {
+    method: 'POST',
+    body: JSON.stringify({ slug: complex.id, ...toComplexRow(complex) }),
+  }, session);
+
+  return fromComplexRow(rows[0]);
+}
+
 export async function updateCloudComplex(session: CloudSession, complex: Complex): Promise<Complex> {
   const rows = await request<ComplexRow[]>(`/rest/v1/complexes?id=eq.${complex.id}`, {
     method: 'PATCH',

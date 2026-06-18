@@ -31,6 +31,7 @@ import {
   deleteCloudAvailability,
   deleteCloudLead,
   fetchCloudState,
+  insertCloudComplex,
   getStoredSession,
   insertCloudAvailability,
   insertCloudLead,
@@ -195,6 +196,24 @@ function splitGallery(value?: string): string[] {
     .split(/\n|,/)
     .map(part => part.trim())
     .filter(Boolean);
+}
+
+function createSlug(value: string, existingIds: string[]): string {
+  const base = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\u0590-\u05ff]+/g, match => Array.from(match).map(char => char.charCodeAt(0).toString(36)).join('-'))
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'complex';
+  let slug = base;
+  let counter = 2;
+
+  while (existingIds.includes(slug)) {
+    slug = `${base}-${counter}`;
+    counter += 1;
+  }
+
+  return slug;
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -887,6 +906,16 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
   const [area, setArea] = useState(areas[0] ?? 'הכל');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [showNewComplex, setShowNewComplex] = useState(false);
+  const [newComplexForm, setNewComplexForm] = useState({
+    name: '',
+    area: 'צפון',
+    city: '',
+    rooms: '0',
+    maxGuests: '0',
+    ownerName: '',
+    ownerPhone: '',
+  });
   const complexes = state.complexes.filter(complex => complex.active && (area === 'הכל' || complex.area === area));
 
   const updateComplex = async (complex: Complex, patch: Partial<Complex>) => {
@@ -907,6 +936,44 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
         // Local save already happened. Cloud sync will be retried by the next save/login.
       }
     }
+  };
+
+  const addComplex = async () => {
+    if (!newComplexForm.name.trim()) return;
+    const complex: Complex = {
+      id: createSlug(newComplexForm.name, state.complexes.map(item => item.id)),
+      name: newComplexForm.name.trim(),
+      area: newComplexForm.area.trim() || 'לא מוגדר',
+      city: newComplexForm.city.trim() || 'לא ידוע',
+      rooms: Number(newComplexForm.rooms || 0),
+      maxGuests: Number(newComplexForm.maxGuests || 0),
+      ownerName: newComplexForm.ownerName.trim(),
+      ownerPhone: newComplexForm.ownerPhone.trim(),
+      active: true,
+    };
+
+    if (session) {
+      try {
+        const cloudComplex = await insertCloudComplex(session, complex);
+        persist({ ...state, complexes: [...state.complexes, cloudComplex] });
+      } catch {
+        persist({ ...state, complexes: [...state.complexes, complex] });
+      }
+    } else {
+      persist({ ...state, complexes: [...state.complexes, complex] });
+    }
+
+    setArea('הכל');
+    setShowNewComplex(false);
+    setNewComplexForm({
+      name: '',
+      area: 'צפון',
+      city: '',
+      rooms: '0',
+      maxGuests: '0',
+      ownerName: '',
+      ownerPhone: '',
+    });
   };
 
   const deleteComplex = async (complex: Complex) => {
@@ -955,8 +1022,30 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
             <h2 className="section-title">קטלוג מתחמים ללקוח</h2>
             <p className="muted">כאן מרכזים לכל מתחם תמונה, וידאו, טלפון וטקסט קצר לשליחה.</p>
           </div>
-          <span className="pill available">{complexes.length} מתחמים</span>
+          <div className="actions">
+            <button className="secondary-btn" type="button" onClick={() => setShowNewComplex(current => !current)}>
+              <Plus size={16} /> הוסף מתחם
+            </button>
+            <span className="pill available">{complexes.length} מתחמים</span>
+          </div>
         </div>
+        {showNewComplex && (
+          <div className="form-grid" style={{ marginTop: 12 }}>
+            <Field label="שם מתחם" value={newComplexForm.name} onChange={value => setNewComplexForm(current => ({ ...current, name: value }))} />
+            <Field label="אזור" value={newComplexForm.area} onChange={value => setNewComplexForm(current => ({ ...current, area: value }))} />
+            <Field label="עיר" value={newComplexForm.city} onChange={value => setNewComplexForm(current => ({ ...current, city: value }))} />
+            <Field label="חדרים" value={newComplexForm.rooms} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, rooms: value }))} />
+            <Field label="מקסימום אורחים" value={newComplexForm.maxGuests} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, maxGuests: value }))} />
+            <Field label="שם בעל מתחם" value={newComplexForm.ownerName} onChange={value => setNewComplexForm(current => ({ ...current, ownerName: value }))} />
+            <Field label="טלפון בעל מתחם" value={newComplexForm.ownerPhone} onChange={value => setNewComplexForm(current => ({ ...current, ownerPhone: value }))} />
+            <div className="actions full">
+              <button className="primary-btn" type="button" onClick={addComplex}>
+                <Plus size={16} /> שמור מתחם
+              </button>
+              <button className="ghost-btn" type="button" onClick={() => setShowNewComplex(false)}>ביטול</button>
+            </div>
+          </div>
+        )}
         <div className="form-grid" style={{ marginTop: 12 }}>
           <SelectField label="אזור" value={area} options={areas} onChange={setArea} />
           <Field label="מספר לקוח לשליחה" value={customerPhone} onChange={setCustomerPhone} placeholder="05..." />
