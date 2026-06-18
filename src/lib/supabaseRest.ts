@@ -180,6 +180,13 @@ export async function deleteCloudLead(session: CloudSession, leadId: string): Pr
   }, session);
 }
 
+export async function deleteCloudAvailability(session: CloudSession, blockId: string): Promise<void> {
+  await request(`/rest/v1/availability_blocks?id=eq.${blockId}`, {
+    method: 'DELETE',
+    headers: { Prefer: 'return=minimal' },
+  }, session);
+}
+
 interface ComplexRow {
   id: string;
   slug: string;

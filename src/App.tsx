@@ -28,6 +28,7 @@ import { createAvailabilityBlock, createLead, createTask, hasDateConflict, loadS
 import { HEBREW_WEEKDAYS_SHORT, formatDateLine, formatGregorianDate, formatHebrewDate, getMonthGrid, isPastDate, toYMD, todayYMD } from './lib/dates';
 import {
   clearSession,
+  deleteCloudAvailability,
   deleteCloudLead,
   fetchCloudState,
   getStoredSession,
@@ -43,7 +44,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.18.5';
+const APP_VERSION = '2026.06.18.6';
 
 type ParsedStayImport = {
   id: string;
@@ -1460,6 +1461,23 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     setRangeForm(current => ({ ...current, customerName: '', customerPhone: '', note: '' }));
   };
 
+  const deleteBlock = async (blockId: string) => {
+    if (!window.confirm('למחוק את הסימון/הלקוח הזה מהלוח?')) return;
+
+    persist({
+      ...state,
+      availabilityBlocks: state.availabilityBlocks.filter(block => block.id !== blockId),
+    });
+
+    if (session) {
+      try {
+        await deleteCloudAvailability(session, blockId);
+      } catch {
+        // The local deletion keeps the screen responsive. A later cloud refresh may restore it if the cloud rejected the delete.
+      }
+    }
+  };
+
   const moveMonth = (direction: -1 | 1) => {
     const next = new Date(year, month + direction, 1);
     setYear(next.getFullYear());
@@ -1599,11 +1617,18 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
           {byDate(blocks).filter(block => block.endDate >= todayYMD()).map(block => (
             <div className="list-item" key={block.id}>
               <div className="item-head">
-                <p className="item-title">{formatDateLine(block.startDate, block.endDate)}</p>
+                <div>
+                  <p className="item-title">{formatDateLine(block.startDate, block.endDate)}</p>
+                  {block.customerName && <span className="muted">{block.customerName}{block.customerPhone ? ` · ${block.customerPhone}` : ''}</span>}
+                </div>
                 <span className={`pill ${block.status}`}>{statusLabels[block.status]}</span>
               </div>
-              {block.customerName && <span className="muted">{block.customerName}{block.customerPhone ? ` · ${block.customerPhone}` : ''}</span>}
               {block.note && <span className="muted">{block.note}</span>}
+              <div className="actions">
+                <button className="ghost-btn danger-btn" type="button" onClick={() => deleteBlock(block.id)}>
+                  <Trash2 size={15} /> מחק
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -1657,8 +1682,6 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
   const deleteLead = async (leadId: string) => {
     if (!window.confirm('למחוק את הפנייה הזו?')) return;
 
-    if (session) await deleteCloudLead(session, leadId);
-
     persist({
       ...state,
       leads: state.leads.filter(lead => lead.id !== leadId),
@@ -1666,6 +1689,14 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       availabilityBlocks: state.availabilityBlocks.map(block => block.leadId === leadId ? { ...block, leadId: undefined } : block),
       tasks: state.tasks.map(task => task.leadId === leadId ? { ...task, leadId: undefined } : task),
     });
+
+    if (session) {
+      try {
+        await deleteCloudLead(session, leadId);
+      } catch {
+        // Local deletion keeps the app moving. If Supabase rejects the delete, the item can reappear after a full cloud refresh.
+      }
+    }
   };
 
   return (
