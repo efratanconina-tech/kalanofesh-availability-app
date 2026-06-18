@@ -1622,6 +1622,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   });
   const [closeFormError, setCloseFormError] = useState('');
   const [closeFormTouched, setCloseFormTouched] = useState(false);
+  const [editingArrivalId, setEditingArrivalId] = useState<string | null>(null);
   const [notificationStatus, setNotificationStatus] = useState(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
@@ -1852,9 +1853,76 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
           <h2 className="section-title">כניסות קרובות</h2>
           <div className="list">
             {upcomingArrivals.length === 0 && <p className="muted">אין כניסות קרובות.</p>}
-            {upcomingArrivals.map(event => (
-              <StayEventItem event={event} key={event.id} />
-            ))}
+            {upcomingArrivals.map(event => {
+              const block = state.availabilityBlocks.find(item => item.id === event.blockId);
+              if (!block) return <StayEventItem event={event} key={event.id} />;
+              const isEditing = editingArrivalId === block.id;
+
+              return (
+                <div className="list-item stay-event arrival" key={event.id}>
+                  <div className="item-head">
+                    <div>
+                      <p className="item-title">כניסה: {block.customerName || 'לקוח ללא שם'}</p>
+                      <span className="muted">{formatDateLine(block.startDate, block.endDate)} · {event.complexName}</span>
+                    </div>
+                    <span className="pill available">כניסה</span>
+                  </div>
+                  {isEditing ? (
+                    <div className="form-grid">
+                      <DateField label="כניסה" value={block.startDate} min="" onChange={value => updateClosureBlock(block, { startDate: value })} />
+                      <DateField label="יציאה" value={block.endDate} min={block.startDate} onChange={value => updateClosureBlock(block, { endDate: value })} />
+                      <Field label="שם לקוח" value={block.customerName ?? ''} onChange={value => updateClosureBlock(block, { customerName: value })} />
+                      <Field label="טלפון" value={block.customerPhone ?? ''} onChange={value => updateClosureBlock(block, { customerPhone: value })} />
+                      <Field label="עמלה" value={block.commissionAmount ?? ''} onChange={value => updateClosureBlock(block, { commissionAmount: value })} />
+                      <label className="owner-select">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(block.commissionPaid)}
+                          onChange={change => updateClosureBlock(block, { commissionPaid: change.target.checked })}
+                        />
+                        <span>שולם</span>
+                      </label>
+                      <SelectField
+                        label="חשבונית"
+                        value={block.invoiceStatus ?? (block.invoiceSent ? 'sent' : 'not_sent')}
+                        options={Object.keys(invoiceStatusLabels)}
+                        labels={invoiceStatusLabels}
+                        onChange={value => updateClosureBlock(block, { invoiceStatus: value as InvoiceStatus, invoiceSent: value === 'sent' })}
+                      />
+                      <Field className="full" label="הערה" value={block.note ?? ''} onChange={value => updateClosureBlock(block, { note: value })} />
+                      <div className="actions full">
+                        <button className="primary-btn" type="button" onClick={() => setEditingArrivalId(null)}>סיים עריכה</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {block.customerPhone && <span className="muted">{block.customerPhone}</span>}
+                      {(block.commissionAmount || block.commissionPaid || block.invoiceSent || block.invoiceStatus === 'end_of_stay') && (
+                        <span className="muted">
+                          {[
+                            block.commissionAmount ? `עמלה: ${block.commissionAmount}` : '',
+                            block.commissionPaid ? 'שולם' : '',
+                            block.invoiceStatus === 'end_of_stay' ? 'תזכורת: לשלוח חשבונית בסוף השהות' : '',
+                            block.invoiceSent || block.invoiceStatus === 'sent' ? 'נשלחה חשבונית' : '',
+                          ].filter(Boolean).join(' · ')}
+                        </span>
+                      )}
+                      {block.note && <span className="muted">{block.note}</span>}
+                      <div className="actions lead-actions">
+                        {block.customerPhone && (
+                          <a className="secondary-btn icon-only" href={`tel:${block.customerPhone}`} title="שיחה" aria-label={`שיחה אל ${block.customerName || 'לקוח'}`}>
+                            <Phone size={17} />
+                          </a>
+                        )}
+                        <button className="ghost-btn icon-only" type="button" onClick={() => setEditingArrivalId(block.id)} title="עריכה" aria-label="עריכת כניסה">
+                          <Pencil size={17} />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
