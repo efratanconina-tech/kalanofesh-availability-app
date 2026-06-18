@@ -660,6 +660,19 @@ button {
   padding: 0;
 }
 
+.lead-actions {
+  flex-wrap: nowrap;
+  gap: 6px;
+  justify-content: flex-start;
+}
+
+.lead-actions .icon-only {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 10px;
+}
+
 .assistant-card {
   min-height: min(620px, calc(100vh - 170px));
 }
@@ -858,6 +871,12 @@ button {
   .secondary-btn,
   .ghost-btn {
     width: 100%;
+  }
+
+  .lead-actions .primary-btn,
+  .lead-actions .secondary-btn,
+  .lead-actions .ghost-btn {
+    width: 34px;
   }
 
   .chat-form {

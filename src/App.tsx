@@ -2447,7 +2447,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
               <span className="muted">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
               <span className="muted">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}</span>
               {lead.notes && <span className="muted">{lead.notes}</span>}
-              <div className="actions">
+              <div className="actions lead-actions">
                 <a className="secondary-btn icon-only" href={`tel:${lead.customerPhone}`} title="שיחה" aria-label={`שיחה אל ${lead.customerName}`}>
                   <Phone size={17} />
                 </a>
