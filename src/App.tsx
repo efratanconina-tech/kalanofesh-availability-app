@@ -644,7 +644,7 @@ function App() {
         {tab === 'assistant' && <AssistantView state={state} persist={persist} session={session} />}
         {tab === 'catalog' && <CatalogView state={state} persist={persist} session={session} />}
         {tab === 'lookup' && <QuickLookup state={state} persist={persist} session={session} />}
-        {tab === 'stays' && <StaysView state={state} />}
+        {tab === 'stays' && <StaysView state={state} persist={persist} session={session} />}
         {tab === 'calendar' && <CalendarView state={state} persist={persist} session={session} />}
         {tab === 'leads' && <LeadsView state={state} persist={persist} session={session} />}
         {tab === 'tasks' && <TasksView state={state} persist={persist} session={session} />}
@@ -1507,16 +1507,26 @@ function QuickLookup({ state, persist, session }: { state: AppState; persist: (s
   );
 }
 
-function StaysView({ state }: { state: AppState }) {
+function StaysView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear] = useState(now.getFullYear());
+  const activeComplexes = state.complexes.filter(complex => complex.active);
+  const [showCloseForm, setShowCloseForm] = useState(false);
+  const [closeForm, setCloseForm] = useState({
+    complexId: activeComplexes[0]?.id ?? '',
+    startDate: todayYMD(),
+    endDate: '',
+    customerName: '',
+    customerPhone: '',
+    note: '',
+  });
   const [notificationStatus, setNotificationStatus] = useState(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
   const today = todayYMD();
   const allEvents = useMemo(() => getStayEvents(state), [state.availabilityBlocks, state.complexes]);
-  const upcomingEvents = allEvents.filter(event => event.date >= today).slice(0, 40);
+  const upcomingArrivals = allEvents.filter(event => event.type === 'arrival' && event.date >= today).slice(0, 40);
   const reminders = allEvents.filter(event => event.date === today || event.reminderDate === today);
   const eventsByDate = useMemo(() => {
     return allEvents.reduce<Record<string, StayEvent[]>>((groups, event) => {
@@ -1557,6 +1567,35 @@ function StaysView({ state }: { state: AppState }) {
     setMonth(next.getMonth());
   };
 
+  const saveCloseBlock = async () => {
+    if (!closeForm.complexId || !closeForm.startDate || !closeForm.endDate || closeForm.endDate <= closeForm.startDate || isPastDate(closeForm.startDate)) return;
+
+    const blockData = {
+      complexId: closeForm.complexId,
+      startDate: closeForm.startDate,
+      endDate: closeForm.endDate,
+      status: 'booked' as AvailabilityStatus,
+      customerName: closeForm.customerName || undefined,
+      customerPhone: closeForm.customerPhone || undefined,
+      note: closeForm.note || 'סגירה ממסך אירוחים',
+    };
+
+    if (session) {
+      const block = await insertCloudAvailability(session, blockData);
+      persist({ ...state, availabilityBlocks: [...state.availabilityBlocks, block] });
+    } else {
+      persist(createAvailabilityBlock(state, blockData));
+    }
+
+    setCloseForm(current => ({
+      ...current,
+      customerName: '',
+      customerPhone: '',
+      note: '',
+    }));
+    setShowCloseForm(false);
+  };
+
   return (
     <div className="grid">
       <section className="card">
@@ -1565,8 +1604,47 @@ function StaysView({ state }: { state: AppState }) {
             <h2 className="section-title">לוח כניסות ויציאות</h2>
             <p className="muted">תזכורות מופיעות 3 ימים לפני ובאותו יום, לפי סימונים שיש בהם לקוח.</p>
           </div>
-          <span className="pill check">{upcomingEvents.length} קרובים</span>
+          <div className="actions">
+            <button className="primary-btn" type="button" onClick={() => setShowCloseForm(current => !current)}>
+              <Plus size={16} /> הוסף סגירה
+            </button>
+            <span className="pill check">{upcomingArrivals.length} כניסות קרובות</span>
+          </div>
         </div>
+        {showCloseForm && (
+          <div className="form-grid" style={{ marginTop: 12 }}>
+            <SelectField
+              label="מתחם"
+              value={closeForm.complexId}
+              options={activeComplexes.map(complex => complex.id)}
+              labels={Object.fromEntries(activeComplexes.map(complex => [complex.id, complex.name]))}
+              onChange={value => setCloseForm(current => ({ ...current, complexId: value }))}
+            />
+            <DateField
+              label="כניסה"
+              value={closeForm.startDate}
+              min={todayYMD()}
+              onChange={value => setCloseForm(current => ({
+                ...current,
+                startDate: value,
+                endDate: current.endDate <= value ? '' : current.endDate,
+              }))}
+            />
+            <DateField
+              label="יציאה"
+              value={closeForm.endDate}
+              min={closeForm.startDate || todayYMD()}
+              onChange={value => setCloseForm(current => ({ ...current, endDate: value }))}
+            />
+            <Field label="שם לקוח" value={closeForm.customerName} onChange={value => setCloseForm(current => ({ ...current, customerName: value }))} />
+            <Field label="טלפון" value={closeForm.customerPhone} onChange={value => setCloseForm(current => ({ ...current, customerPhone: value }))} />
+            <Field className="full" label="הערה" value={closeForm.note} onChange={value => setCloseForm(current => ({ ...current, note: value }))} />
+            <div className="actions full">
+              <button className="primary-btn" type="button" onClick={saveCloseBlock}>שמור סגירה</button>
+              <button className="ghost-btn" type="button" onClick={() => setShowCloseForm(false)}>ביטול</button>
+            </div>
+          </div>
+        )}
         <div className="actions" style={{ marginTop: 12 }}>
           <button className="secondary-btn" type="button" onClick={requestNotifications} disabled={notificationStatus === 'granted' || notificationStatus === 'unsupported'}>
             <BellRing size={16} /> {notificationStatus === 'granted' ? 'התראות פעילות' : 'הפעל התראות'}
@@ -1587,10 +1665,10 @@ function StaysView({ state }: { state: AppState }) {
 
       <section className="grid content-grid">
         <div className="card">
-          <h2 className="section-title">רשימה קרובה</h2>
+          <h2 className="section-title">כניסות קרובות</h2>
           <div className="list">
-            {upcomingEvents.length === 0 && <p className="muted">אין כניסות או יציאות קרובות.</p>}
-            {upcomingEvents.map(event => (
+            {upcomingArrivals.length === 0 && <p className="muted">אין כניסות קרובות.</p>}
+            {upcomingArrivals.map(event => (
               <StayEventItem event={event} key={event.id} />
             ))}
           </div>
