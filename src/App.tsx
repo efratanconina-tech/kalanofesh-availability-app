@@ -44,7 +44,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.18.6';
+const APP_VERSION = '2026.06.18.7';
 
 type ParsedStayImport = {
   id: string;
@@ -445,6 +445,24 @@ function buildAssistantReply(input: string, state: AppState): string {
   return 'כרגע אני יודעת לחשב זמינות מתוך הנתונים. נסי לכתוב: "רשימת שבתות פנויות לחודשים הקרובים".';
 }
 
+async function askGptAssistant(message: string, state: AppState): Promise<string> {
+  const response = await fetch('/api/assistant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, state }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 501) {
+      return 'GPT עדיין לא מחובר. צריך להוסיף ב-Vercel משתנה סביבה בשם OPENAI_API_KEY ואז לעשות Redeploy.';
+    }
+    throw new Error(await response.text());
+  }
+
+  const data = await response.json() as { text?: string };
+  return data.text || 'לא קיבלתי תשובה מ-GPT.';
+}
+
 function App() {
   const [state, setState] = useState<AppState>(() => loadState());
   const [tab, setTab] = useState<Tab>('dashboard');
@@ -653,12 +671,14 @@ function AssistantView({
     },
   ]);
 
-  const sendMessage = (text = input) => {
+  const sendMessage = async (text = input) => {
     const question = text.trim();
     if (!question) return;
     const parsedItems = parseAssistantImportList(question, state);
     const availabilityCount = parsedItems.filter(item => item.importType === 'availability').length;
     const stayCount = parsedItems.filter(item => item.importType === 'stay').length;
+    const localReply = buildAssistantReply(question, state);
+    const shouldAskGpt = !parsedItems.length && localReply.startsWith('כרגע אני יודעת');
     const importReply = parsedItems.length
       ? [
           availabilityCount
@@ -667,7 +687,9 @@ function AssistantView({
           `${parsedItems.filter(item => item.complexId).length} עם מתחם מזוהה, ${parsedItems.filter(item => !item.complexId).length} בלי מתחם מזוהה.`,
           'תבדקי את הטיוטה למטה ואז לחצי "שמור פריטים מזוהים".',
         ].join('\n')
-      : buildAssistantReply(question, state);
+      : shouldAskGpt
+        ? 'בודקת עם GPT...'
+        : localReply;
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -683,6 +705,21 @@ function AssistantView({
     if (parsedItems.length) setDraftItems(parsedItems);
     setMessages(current => [...current, userMessage, assistantMessage]);
     setInput('');
+
+    if (shouldAskGpt) {
+      try {
+        const gptReply = await askGptAssistant(question, state);
+        setMessages(current => current.map(message =>
+          message.id === assistantMessage.id ? { ...message, text: gptReply } : message
+        ));
+      } catch {
+        setMessages(current => current.map(message =>
+          message.id === assistantMessage.id
+            ? { ...message, text: 'לא הצלחתי להתחבר ל-GPT כרגע. בדקי שיש OPENAI_API_KEY ב-Vercel ונסי שוב.' }
+            : message
+        ));
+      }
+    }
   };
 
   const saveDraftItems = async () => {
