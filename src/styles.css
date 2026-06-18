@@ -32,7 +32,7 @@ button {
 
 .app-shell {
   min-height: 100vh;
-  padding: 18px 14px 96px;
+  padding: 18px 14px calc(150px + env(safe-area-inset-bottom));
 }
 
 .app-frame {
@@ -264,12 +264,14 @@ button {
   left: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(8, minmax(72px, 1fr));
   gap: 6px;
   padding: 10px 10px max(12px, env(safe-area-inset-bottom));
   background: rgba(255, 253, 248, 0.94);
   border-top: 1px solid rgba(205, 168, 91, 0.2);
   backdrop-filter: blur(14px);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 .tab {
@@ -696,7 +698,7 @@ button {
 
 @media (min-width: 760px) {
   .app-shell {
-    padding: 28px 20px 110px;
+    padding: 28px 20px calc(140px + env(safe-area-inset-bottom));
   }
 
   .dashboard-grid {
@@ -718,6 +720,10 @@ button {
 }
 
 @media (max-width: 520px) {
+  .app-shell {
+    padding-bottom: calc(170px + env(safe-area-inset-bottom));
+  }
+
   .topbar {
     align-items: flex-start;
   }
