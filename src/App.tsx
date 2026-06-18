@@ -1364,7 +1364,7 @@ function Dashboard({
       </section>
 
       <section className="grid dashboard-grid">
-        <Metric label="סה״כ מתחמים" value={totalComplexes} icon={<Home size={18} />} />
+        <Metric label="סה״כ מתחמים" value={totalComplexes} icon={<Home size={16} />} compact />
         <Metric label="פנויים לשבת הקרובה" value={nextShabbatAvailable} icon={<CalendarDays size={18} />} detail={nextShabbatDetail || undefined} />
         <Metric label="פניות פתוחות" value={openLeads} icon={<Users size={18} />} />
         <Metric label="משימות" value={openTasks} icon={<ListChecks size={18} />} />
@@ -1408,9 +1408,9 @@ function Dashboard({
   );
 }
 
-function Metric({ label, value, icon, detail }: { label: string; value: number; icon: React.ReactNode; detail?: string }) {
+function Metric({ label, value, icon, detail, compact = false }: { label: string; value: number; icon: React.ReactNode; detail?: string; compact?: boolean }) {
   return (
-    <div className="card metric">
+    <div className={`card metric ${compact ? 'compact' : ''}`}>
       <div className="item-head">
         <p className="metric-label">{label}</p>
         {icon}
