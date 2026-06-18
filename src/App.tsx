@@ -240,6 +240,22 @@ function normalizePhone(value: string): string {
   return digits;
 }
 
+function parseMoneyAmount(value?: string): number {
+  const match = value?.match(/\d[\d,.\s]*/);
+  if (!match) return 0;
+  const normalized = match[0].replace(/[,\s]/g, '');
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function formatMoneyAmount(value: number): string {
+  return new Intl.NumberFormat('he-IL', {
+    style: 'currency',
+    currency: 'ILS',
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
 function splitGallery(value?: string): string[] {
   return (value ?? '')
     .split(/\n|,/)
@@ -1570,6 +1586,8 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       .slice(0, 80),
     [state.availabilityBlocks],
   );
+  const unpaidCommissionBlocks = closureBlocks.filter(block => !block.commissionPaid && parseMoneyAmount(block.commissionAmount) > 0);
+  const moneyToCollect = unpaidCommissionBlocks.reduce((sum, block) => sum + parseMoneyAmount(block.commissionAmount), 0);
   const reminders = allEvents.filter(event => event.date === today || event.reminderDate === today);
   const eventsByDate = useMemo(() => {
     return allEvents.reduce<Record<string, StayEvent[]>>((groups, event) => {
@@ -1798,6 +1816,13 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
             <p className="muted">כאן אפשר לעדכן סטטוס, עמלה, תשלום וחשבונית לסגירות קיימות.</p>
           </div>
           <span className="pill check">{closureBlocks.length} סגירות</span>
+        </div>
+        <div className="catalog-preview" style={{ marginTop: 12 }}>
+          <p className="metric-label">עוד כסף שאמור להיכנס</p>
+          <p className="metric-value" style={{ margin: '4px 0' }}>{formatMoneyAmount(moneyToCollect)}</p>
+          <p className="muted" style={{ margin: 0 }}>
+            מחושב מתוך {unpaidCommissionBlocks.length} סגירות עם עמלה שעדיין לא סומנה כשולמה.
+          </p>
         </div>
         <div className="list" style={{ marginTop: 12 }}>
           {closureBlocks.length === 0 && <p className="muted">אין סגירות להצגה.</p>}
