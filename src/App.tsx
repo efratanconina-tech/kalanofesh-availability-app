@@ -1,0 +1,1433 @@
+﻿import { useEffect, useMemo, useState } from 'react';
+import {
+  Building2,
+  BellRing,
+  CalendarCheck,
+  CalendarDays,
+  CalendarX,
+  CheckCircle2,
+  Cloud,
+  ClipboardList,
+  Home,
+  Image,
+  ListChecks,
+  MessageCircle,
+  Phone,
+  Plus,
+  Search,
+  Send,
+  Settings,
+  Share2,
+  Trash2,
+  Users,
+  Video,
+} from 'lucide-react';
+import type { AppState, AvailabilityStatus, Complex, LeadStatus } from './types';
+import { createAvailabilityBlock, createLead, createTask, hasDateConflict, loadState, saveState } from './lib/store';
+import { HEBREW_WEEKDAYS_SHORT, formatDateLine, formatGregorianDate, formatHebrewDate, getMonthGrid, isPastDate, toYMD, todayYMD } from './lib/dates';
+import {
+  clearSession,
+  deleteCloudLead,
+  fetchCloudState,
+  getStoredSession,
+  insertCloudAvailability,
+  insertCloudLead,
+  insertCloudTask,
+  isCloudConfigured,
+  signIn,
+  updateCloudComplex,
+  updateCloudTaskStatus,
+  type CloudSession,
+} from './lib/supabaseRest';
+
+type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
+type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
+const APP_VERSION = '2026.06.18.2';
+
+type StayEvent = {
+  id: string;
+  type: 'arrival' | 'departure';
+  date: string;
+  reminderDate: string;
+  blockId: string;
+  complexName: string;
+  customerName: string;
+  customerPhone?: string;
+  status: AvailabilityStatus;
+  note?: string;
+};
+
+const statusLabels: Record<AvailabilityStatus, string> = {
+  available: 'פנוי',
+  booked: 'תפוס',
+  tentative: 'בהמתנה',
+  offered: 'הוצע',
+  check: 'לבדיקה',
+  maintenance: 'תחזוקה',
+};
+
+const leadStatusLabels: Record<LeadStatus, string> = {
+  new: 'חדש',
+  in_progress: 'בטיפול',
+  waiting: 'מחכה',
+  closed: 'נסגר',
+  irrelevant: 'לא רלוונטי',
+};
+
+function byDate<T extends { startDate: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+function dateFromYMD(value: string): Date {
+  return new Date(`${value}T12:00:00`);
+}
+
+function getStayEvents(state: AppState): StayEvent[] {
+  return state.availabilityBlocks
+    .filter(block => block.status !== 'available' && Boolean(block.customerName || block.customerPhone || block.leadId))
+    .flatMap(block => {
+      const complex = state.complexes.find(item => item.id === block.complexId);
+      const customerName = block.customerName || 'לקוח ללא שם';
+      const base = {
+        blockId: block.id,
+        complexName: complex?.name ?? 'מתחם',
+        customerName,
+        customerPhone: block.customerPhone,
+        status: block.status,
+        note: block.note,
+      };
+
+      return [
+        {
+          ...base,
+          id: `${block.id}-arrival`,
+          type: 'arrival' as const,
+          date: block.startDate,
+          reminderDate: toYMD(addDays(dateFromYMD(block.startDate), -3)),
+        },
+        {
+          ...base,
+          id: `${block.id}-departure`,
+          type: 'departure' as const,
+          date: block.endDate,
+          reminderDate: toYMD(addDays(dateFromYMD(block.endDate), -3)),
+        },
+      ];
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function findAvailableComplexes(state: AppState, startDate: string, endDate: string): Complex[] {
+  return state.complexes.filter(complex =>
+    complex.active &&
+    !state.availabilityBlocks.some(block =>
+      block.complexId === complex.id &&
+      block.status !== 'available' &&
+      hasDateConflict(block, startDate, endDate)
+    )
+  );
+}
+
+function getUpcomingShabbatRanges(months = 3): { startDate: string; endDate: string; labelDate: string }[] {
+  const today = new Date();
+  const until = new Date(today.getFullYear(), today.getMonth() + months, today.getDate());
+  const daysUntilFriday = (5 - today.getDay() + 7) % 7;
+  let friday = addDays(today, daysUntilFriday);
+  const ranges: { startDate: string; endDate: string; labelDate: string }[] = [];
+
+  while (friday <= until) {
+    const shabbat = addDays(friday, 1);
+    const checkout = addDays(friday, 2);
+    ranges.push({
+      startDate: toYMD(friday),
+      endDate: toYMD(checkout),
+      labelDate: toYMD(shabbat),
+    });
+    friday = addDays(friday, 7);
+  }
+
+  return ranges;
+}
+
+function normalizePhone(value: string): string {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('972')) return digits;
+  if (digits.startsWith('0')) return `972${digits.slice(1)}`;
+  return digits;
+}
+
+function buildComplexShareText(complex: Complex): string {
+  return [
+    complex.name,
+    `${complex.city} | ${complex.area}`,
+    `${complex.rooms} חדרים | עד ${complex.maxGuests} אורחים`,
+    complex.salesNote,
+    complex.shabbatNotes ? `פרטי שבת: ${complex.shabbatNotes}` : '',
+    complex.coverImageUrl ? `תמונה: ${complex.coverImageUrl}` : '',
+    complex.videoUrl ? `וידאו: ${complex.videoUrl}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+function buildAssistantReply(input: string, state: AppState): string {
+  const normalized = input.trim();
+  const explicitDate = normalized.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+
+  if (explicitDate) {
+    const endDate = toYMD(addDays(new Date(`${explicitDate}T12:00:00`), 1));
+    const available = findAvailableComplexes(state, explicitDate, endDate);
+    if (!available.length) return `לתאריך ${formatDateLine(explicitDate)} לא מצאתי מתחמים פנויים.`;
+    return [
+      `לתאריך ${formatDateLine(explicitDate)} מצאתי ${available.length} מתחמים פנויים:`,
+      ...available.map(complex => `• ${complex.name} - ${complex.city}, עד ${complex.maxGuests} אורחים`),
+    ].join('\n');
+  }
+
+  if (normalized.includes('שבת') || normalized.includes('שבתות')) {
+    const ranges = getUpcomingShabbatRanges(3)
+      .map(range => ({
+        ...range,
+        available: findAvailableComplexes(state, range.startDate, range.endDate),
+      }))
+      .filter(range => range.available.length > 0);
+
+    if (!ranges.length) return 'לא מצאתי שבתות עם מתחמים פנויים בשלושת החודשים הקרובים.';
+
+    return [
+      'שבתות פנויות בשלושת החודשים הקרובים:',
+      ...ranges.slice(0, 12).map(range => {
+        const names = range.available.slice(0, 5).map(complex => complex.name).join(', ');
+        const extra = range.available.length > 5 ? ` ועוד ${range.available.length - 5}` : '';
+        return `• ${formatDateLine(range.labelDate)}: ${range.available.length} פנויים - ${names}${extra}`;
+      }),
+    ].join('\n');
+  }
+
+  if (normalized.includes('פנוי') || normalized.includes('פנויות') || normalized.includes('זמינות')) {
+    return 'אפשר לכתוב למשל: "רשימת שבתות פנויות לחודשים הקרובים" או "מה פנוי ב-2026-07-10".';
+  }
+
+  return 'כרגע אני יודעת לחשב זמינות מתוך הנתונים. נסי לכתוב: "רשימת שבתות פנויות לחודשים הקרובים".';
+}
+
+function App() {
+  const [state, setState] = useState<AppState>(() => loadState());
+  const [tab, setTab] = useState<Tab>('dashboard');
+  const [session, setSession] = useState<CloudSession | null>(() => getStoredSession());
+  const [syncStatus, setSyncStatus] = useState('מקומי');
+
+  const persist = (nextState: AppState) => {
+    setState(nextState);
+    saveState(nextState);
+  };
+
+  useEffect(() => {
+    if (!session) return;
+
+    let active = true;
+    setSyncStatus('מסתנכרן...');
+    fetchCloudState(session)
+      .then(cloudState => {
+        if (!active) return;
+        const nextState = { ...loadState(), ...cloudState };
+        setState(nextState);
+        saveState(nextState);
+        setSyncStatus('מחובר לענן');
+      })
+      .catch(() => {
+        if (active) setSyncStatus('לא הצליח להסתנכרן');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [session]);
+
+  const totalComplexes = state.complexes.filter(complex => complex.active).length;
+  const nextShabbatRange = getUpcomingShabbatRanges(1)[0];
+  const nextShabbatAvailable = useMemo(
+    () => nextShabbatRange ? findAvailableComplexes(state, nextShabbatRange.startDate, nextShabbatRange.endDate).length : 0,
+    [nextShabbatRange, state],
+  );
+  const upcomingAvailableShabbats = useMemo(
+    () => getUpcomingShabbatRanges(3)
+      .map(range => ({
+        ...range,
+        available: findAvailableComplexes(state, range.startDate, range.endDate),
+      }))
+      .filter(range => range.available.length > 0)
+      .slice(0, 8),
+    [state],
+  );
+  const openLeads = state.leads.filter(lead => lead.status !== 'closed' && lead.status !== 'irrelevant');
+  const openTasks = state.tasks.filter(task => task.status === 'open');
+
+  return (
+    <div className="app-shell">
+      <main className="app-frame">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">אפליקציה פרטית</p>
+            <h1 className="title">קלנופש</h1>
+            <p className="subtitle">מקור אמת אחד לכם, לבעלך ובהמשך לעובדים. מצב: {syncStatus} · גרסה {APP_VERSION}</p>
+          </div>
+          <div className="actions">
+            {session ? (
+              <button
+                className="ghost-btn"
+                type="button"
+                onClick={() => {
+                  clearSession();
+                  setSession(null);
+                  setSyncStatus('מקומי');
+                }}
+              >
+                יציאה
+              </button>
+            ) : (
+              <LoginButton onLogin={setSession} />
+            )}
+            <button className="ghost-btn" type="button" title="הגדרות">
+              <Settings size={18} />
+            </button>
+          </div>
+        </header>
+
+        {tab === 'dashboard' && (
+          <Dashboard
+            totalComplexes={totalComplexes}
+            nextShabbatAvailable={nextShabbatAvailable}
+            nextShabbatLabel={nextShabbatRange?.labelDate}
+            openLeads={openLeads.length}
+            openTasks={openTasks.length}
+            upcomingAvailableCount={upcomingAvailableShabbats.length}
+            availableShabbats={upcomingAvailableShabbats}
+            onGo={setTab}
+            syncStatus={syncStatus}
+            connected={Boolean(session)}
+          />
+        )}
+
+        {!session && isCloudConfigured() && (
+          <section className="card" style={{ marginBottom: 12 }}>
+            <p className="muted" style={{ margin: 0 }}>
+              כדי ששני טלפונים יראו את אותו מידע צריך להתחבר. עד אז אפשר לעבוד מקומית לצורך בדיקה.
+            </p>
+          </section>
+        )}
+
+        {tab === 'assistant' && <AssistantView state={state} />}
+        {tab === 'catalog' && <CatalogView state={state} persist={persist} session={session} />}
+        {tab === 'lookup' && <QuickLookup state={state} persist={persist} session={session} />}
+        {tab === 'stays' && <StaysView state={state} />}
+        {tab === 'calendar' && <CalendarView state={state} persist={persist} session={session} />}
+        {tab === 'leads' && <LeadsView state={state} persist={persist} session={session} />}
+        {tab === 'tasks' && <TasksView state={state} persist={persist} session={session} />}
+      </main>
+
+      <nav className="tabs" aria-label="ניווט">
+        <TabButton active={tab === 'dashboard'} onClick={() => setTab('dashboard')} icon={<Home size={18} />} label="בית" />
+        <TabButton active={tab === 'assistant'} onClick={() => setTab('assistant')} icon={<MessageCircle size={18} />} label="צ׳אט" />
+        <TabButton active={tab === 'catalog'} onClick={() => setTab('catalog')} icon={<Building2 size={18} />} label="מתחמים" />
+        <TabButton active={tab === 'lookup'} onClick={() => setTab('lookup')} icon={<Search size={18} />} label="בדיקה" />
+        <TabButton active={tab === 'stays'} onClick={() => setTab('stays')} icon={<BellRing size={18} />} label="אירוחים" />
+        <TabButton active={tab === 'calendar'} onClick={() => setTab('calendar')} icon={<CalendarDays size={18} />} label="לוחות" />
+        <TabButton active={tab === 'leads'} onClick={() => setTab('leads')} icon={<Users size={18} />} label="לקוחות" />
+        <TabButton active={tab === 'tasks'} onClick={() => setTab('tasks')} icon={<ListChecks size={18} />} label="משימות" />
+      </nav>
+    </div>
+  );
+}
+
+function LoginButton({ onLogin }: { onLogin: (session: CloudSession) => void }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const nextSession = await signIn(email, password);
+      onLogin(nextSession);
+      setOpen(false);
+    } catch (event) {
+      setError(event instanceof Error ? event.message : 'הכניסה נכשלה.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button className="secondary-btn" type="button" onClick={() => setOpen(true)}>
+        כניסה
+      </button>
+    );
+  }
+
+  return (
+    <div className="card login-popover">
+      <label className="field">
+        <span className="label">אימייל</span>
+        <input className="input" value={email} onChange={event => setEmail(event.target.value)} />
+      </label>
+      <label className="field">
+        <span className="label">סיסמה</span>
+        <input className="input" type="password" value={password} onChange={event => setPassword(event.target.value)} />
+      </label>
+      {error && <p className="error-text">{error}</p>}
+      <div className="actions">
+        <button className="primary-btn" type="button" disabled={loading} onClick={submit}>
+          {loading ? 'נכנס...' : 'התחבר'}
+        </button>
+        <button className="ghost-btn" type="button" onClick={() => setOpen(false)}>סגור</button>
+      </div>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button className={`tab ${active ? 'active' : ''}`} type="button" onClick={onClick}>
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function AssistantView({ state }: { state: AppState }) {
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: 'welcome',
+      role: 'assistant',
+      text: 'כתבי לי מה לבדוק. למשל: "רשימת שבתות פנויות לחודשים הקרובים" או "מה פנוי ב-2026-07-10".',
+    },
+  ]);
+
+  const sendMessage = (text = input) => {
+    const question = text.trim();
+    if (!question) return;
+
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      text: question,
+    };
+    const assistantMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      text: buildAssistantReply(question, state),
+    };
+
+    setMessages(current => [...current, userMessage, assistantMessage]);
+    setInput('');
+  };
+
+  return (
+    <div className="grid">
+      <section className="card assistant-card">
+        <div className="item-head">
+          <div>
+            <h2 className="section-title">צ׳אט ניהול</h2>
+            <p className="muted">הצ׳אט קורא את נתוני הזמינות שכבר שמורים באפליקציה ומחזיר תשובות תפעוליות.</p>
+          </div>
+          <span className="pill check">ניסוי ראשון</span>
+        </div>
+
+        <div className="quick-prompts">
+          <button className="secondary-btn" type="button" onClick={() => sendMessage('רשימת שבתות פנויות לחודשים הקרובים')}>
+            שבתות פנויות
+          </button>
+          <button className="secondary-btn" type="button" onClick={() => sendMessage(`מה פנוי ב-${todayYMD()}`)}>
+            מה פנוי היום
+          </button>
+        </div>
+
+        <div className="chat-list">
+          {messages.map(message => (
+            <div className={`chat-message ${message.role}`} key={message.id}>
+              <span className="chat-role">{message.role === 'user' ? 'את' : 'העוזר'}</span>
+              <p>{message.text}</p>
+            </div>
+          ))}
+        </div>
+
+        <form
+          className="chat-form"
+          onSubmit={event => {
+            event.preventDefault();
+            sendMessage();
+          }}
+        >
+          <input
+            className="input"
+            value={input}
+            onChange={event => setInput(event.target.value)}
+            placeholder="לדוגמה: רשימת שבתות פנויות לחודשים הקרובים"
+          />
+          <button className="primary-btn" type="submit">
+            <Send size={16} /> שלח
+          </button>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function CatalogView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
+  const areas = ['הכל', ...Array.from(new Set(state.complexes.map(complex => complex.area)))];
+  const [area, setArea] = useState(areas[0] ?? 'הכל');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const complexes = state.complexes.filter(complex => complex.active && (area === 'הכל' || complex.area === area));
+
+  const updateComplex = async (complex: Complex, patch: Partial<Complex>) => {
+    const updated = { ...complex, ...patch };
+    persist({
+      ...state,
+      complexes: state.complexes.map(item => item.id === complex.id ? updated : item),
+    });
+
+    if (session) {
+      try {
+        const cloudComplex = await updateCloudComplex(session, updated);
+        persist({
+          ...state,
+          complexes: state.complexes.map(item => item.id === complex.id ? cloudComplex : item),
+        });
+      } catch {
+        // Local save already happened. Cloud sync will be retried by the next save/login.
+      }
+    }
+  };
+
+  const getWhatsappHref = (complex: Complex) => {
+    const text = encodeURIComponent(buildComplexShareText(complex));
+    const phone = normalizePhone(customerPhone);
+    return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+  };
+  const getMailHref = (complex: Complex) => {
+    const subject = encodeURIComponent(`פרטי מתחם: ${complex.name}`);
+    const body = encodeURIComponent(buildComplexShareText(complex));
+    return `mailto:${customerEmail}?subject=${subject}&body=${body}`;
+  };
+
+  return (
+    <div className="grid">
+      <section className="card">
+        <div className="item-head">
+          <div>
+            <h2 className="section-title">קטלוג מתחמים ללקוח</h2>
+            <p className="muted">כאן מרכזים לכל מתחם תמונה, וידאו, טלפון וטקסט קצר לשליחה.</p>
+          </div>
+          <span className="pill available">{complexes.length} מתחמים</span>
+        </div>
+        <div className="form-grid" style={{ marginTop: 12 }}>
+          <SelectField label="אזור" value={area} options={areas} onChange={setArea} />
+          <Field label="מספר לקוח לשליחה" value={customerPhone} onChange={setCustomerPhone} placeholder="05..." />
+          <Field label="אימייל לקוח לשליחה" value={customerEmail} onChange={setCustomerEmail} placeholder="name@example.com" />
+        </div>
+      </section>
+
+      <section className="catalog-grid">
+        {complexes.map(complex => (
+          <article className="card catalog-card" key={complex.id}>
+            {complex.coverImageUrl ? (
+              <img className="catalog-image" src={complex.coverImageUrl} alt={complex.name} />
+            ) : (
+              <div className="catalog-placeholder">
+                <Image size={28} />
+                <span>מקום לתמונה</span>
+              </div>
+            )}
+
+            <div className="item-head">
+              <div>
+                <h2 className="section-title">{complex.name}</h2>
+                <p className="muted">{complex.city} · {complex.area} · {complex.rooms} חדרים · עד {complex.maxGuests} אורחים</p>
+              </div>
+              {complex.videoUrl && <a className="ghost-btn icon-only" href={complex.videoUrl} target="_blank" rel="noreferrer" title="פתיחת וידאו"><Video size={18} /></a>}
+            </div>
+
+            <div className="form-grid">
+              <Field label="טלפון בעל מתחם" value={complex.ownerPhone ?? ''} onChange={value => updateComplex(complex, { ownerPhone: value })} />
+              <Field label="קישור תמונה" value={complex.coverImageUrl ?? ''} onChange={value => updateComplex(complex, { coverImageUrl: value })} />
+              <Field label="קישור וידאו" value={complex.videoUrl ?? ''} onChange={value => updateComplex(complex, { videoUrl: value })} />
+              <Field className="full" label="טקסט קצר ללקוח" value={complex.salesNote ?? ''} onChange={value => updateComplex(complex, { salesNote: value })} />
+            </div>
+
+            <div className="catalog-preview">
+              <p className="muted">{complex.salesNote || complex.shabbatNotes || 'עדיין אין טקסט שיווקי. אפשר לכתוב כאן משפט מכירה קצר.'}</p>
+            </div>
+
+            <div className="actions">
+              <a className="primary-btn" href={getWhatsappHref(complex)} target="_blank" rel="noreferrer">
+                <Share2 size={16} /> שלח ללקוח
+              </a>
+              <a className="secondary-btn" href={getMailHref(complex)}>
+                שלח במייל
+              </a>
+              {complex.ownerPhone && <a className="secondary-btn" href={`tel:${complex.ownerPhone}`}>שיחה לבעל מתחם</a>}
+            </div>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function Dashboard({
+  totalComplexes,
+  nextShabbatAvailable,
+  nextShabbatLabel,
+  openLeads,
+  openTasks,
+  upcomingAvailableCount,
+  availableShabbats,
+  onGo,
+  syncStatus,
+  connected,
+}: {
+  totalComplexes: number;
+  nextShabbatAvailable: number;
+  nextShabbatLabel?: string;
+  openLeads: number;
+  openTasks: number;
+  upcomingAvailableCount: number;
+  availableShabbats: {
+    startDate: string;
+    endDate: string;
+    labelDate: string;
+    available: Complex[];
+  }[];
+  onGo: (tab: Tab) => void;
+  syncStatus: string;
+  connected: boolean;
+}) {
+  return (
+    <div className="grid">
+      <section className="hero-panel">
+        <div>
+          <span className={`sync-badge ${connected ? 'online' : ''}`}>
+            <Cloud size={14} />
+            {syncStatus}
+          </span>
+          <h2>מה צריך לדעת עכשיו?</h2>
+          <p>סך המתחמים, זמינות לשבת הקרובה, פניות פתוחות ומשימות במקום אחד.</p>
+        </div>
+        <div className="hero-actions">
+          <button className="primary-btn" type="button" onClick={() => onGo('lookup')}>בדיקת זמינות</button>
+          <button className="secondary-btn" type="button" onClick={() => onGo('calendar')}>סימון תאריך</button>
+        </div>
+      </section>
+
+      <section className="grid dashboard-grid">
+        <Metric label="סה״כ מתחמים" value={totalComplexes} icon={<Home size={18} />} />
+        <Metric label="פנויים לשבת הקרובה" value={nextShabbatAvailable} icon={<CalendarDays size={18} />} detail={nextShabbatLabel ? formatDateLine(nextShabbatLabel) : undefined} />
+        <Metric label="פניות פתוחות" value={openLeads} icon={<Users size={18} />} />
+        <Metric label="משימות" value={openTasks} icon={<ListChecks size={18} />} />
+      </section>
+
+      <section className="grid content-grid">
+        <div className="card">
+          <div className="item-head">
+            <h2 className="section-title">שבתות פנויות קרובות</h2>
+            <button className="ghost-btn" type="button" onClick={() => onGo('calendar')}>ללוחות</button>
+          </div>
+          <div className="list">
+            {availableShabbats.length === 0 && <p className="muted">לא נמצאו שבתות פנויות בקרוב.</p>}
+            {availableShabbats.map(shabbat => (
+              <div className="list-item" key={shabbat.startDate}>
+                <div className="item-head">
+                  <p className="item-title">{formatDateLine(shabbat.labelDate)}</p>
+                  <span className="pill available">{shabbat.available.length} פנויים</span>
+                </div>
+                <span className="muted">
+                  {shabbat.available.slice(0, 4).map(complex => complex.name).join(', ')}
+                  {shabbat.available.length > 4 ? ` ועוד ${shabbat.available.length - 4}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="item-head">
+            <h2 className="section-title">פעולות מהירות</h2>
+          </div>
+          <div className="grid">
+            <button className="primary-btn" type="button" onClick={() => onGo('lookup')}>בדיקת זמינות ללקוח</button>
+            <button className="secondary-btn" type="button" onClick={() => onGo('leads')}>הוספת פנייה</button>
+            <button className="ghost-btn" type="button" onClick={() => onGo('tasks')}>פתיחת משימות</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Metric({ label, value, icon, detail }: { label: string; value: number; icon: React.ReactNode; detail?: string }) {
+  return (
+    <div className="card metric">
+      <div className="item-head">
+        <p className="metric-label">{label}</p>
+        {icon}
+      </div>
+      <p className="metric-value">{value}</p>
+      {detail && <span className="muted">{detail}</span>}
+    </div>
+  );
+}
+
+function QuickLookup({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
+  const [form, setForm] = useState({
+    startDate: todayYMD(),
+    endDate: '',
+    guests: '20',
+    area: 'לא משנה',
+    vacationType: 'שבת חתן',
+    customerName: '',
+    customerPhone: '',
+    notes: '',
+  });
+  const [checked, setChecked] = useState(false);
+
+  const results = useMemo(() => {
+    if (!form.startDate || !form.endDate || form.endDate <= form.startDate || isPastDate(form.startDate)) return [];
+
+    return state.complexes
+      .filter(complex => complex.active)
+      .map(complex => {
+        const conflicts = state.availabilityBlocks.filter(block =>
+          block.complexId === complex.id && hasDateConflict(block, form.startDate, form.endDate)
+        );
+        const capacityOk = complex.maxGuests >= Number(form.guests || 0);
+        const areaOk = form.area === 'לא משנה' || complex.area === form.area;
+        const score = (capacityOk ? 40 : 0) + (areaOk ? 30 : 0) + (conflicts.length === 0 ? 30 : 0);
+        return { complex, conflicts, capacityOk, areaOk, score };
+      })
+      .sort((a, b) => {
+        const availabilityOrder = Number(a.conflicts.length > 0) - Number(b.conflicts.length > 0);
+        if (availabilityOrder !== 0) return availabilityOrder;
+        return b.score - a.score;
+      });
+  }, [form.area, form.endDate, form.guests, form.startDate, state.availabilityBlocks, state.complexes]);
+
+  const createLeadFromForm = async () => {
+    const leadData = {
+      customerName: form.customerName || 'לקוח ללא שם',
+      customerPhone: form.customerPhone,
+      startDate: form.startDate,
+      endDate: form.endDate,
+      guests: Number(form.guests || 0),
+      areaPreference: form.area,
+      vacationType: form.vacationType,
+      notes: form.notes,
+      status: 'new' as const,
+    };
+
+    if (session) {
+      const lead = await insertCloudLead(session, leadData);
+      persist({ ...state, leads: [lead, ...state.leads] });
+      return;
+    }
+
+    const next = createLead(state, {
+      ...leadData,
+    });
+    persist(next);
+  };
+
+  const getOwnerWhatsappHref = (complex: Complex) => {
+    const phone = normalizePhone(complex.ownerPhone ?? '');
+    if (!phone) return '';
+
+    const text = encodeURIComponent([
+      `שלום, אשמח לבדוק זמינות עבור ${complex.name}.`,
+      `תאריכים: ${formatDateLine(form.startDate, form.endDate)}`,
+      `כמות אורחים: ${form.guests || 'לא צוין'}`,
+      form.customerName ? `שם לקוח: ${form.customerName}` : '',
+      form.notes ? `הערות: ${form.notes}` : '',
+    ].filter(Boolean).join('\n'));
+
+    return `https://wa.me/${phone}?text=${text}`;
+  };
+
+  return (
+    <div className="grid">
+      <section className="card">
+        <h2 className="section-title">בדיקת זמינות מהירה</h2>
+        <div className="form-grid">
+          <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate <= value ? '' : form.endDate })} />
+          <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
+          <Field label="אורחים" value={form.guests} type="number" min="1" onChange={value => setForm({ ...form, guests: value })} />
+          <SelectField label="אזור" value={form.area} options={['לא משנה', 'צפון', 'מרכז', 'ירושלים והסביבה', 'דרום']} onChange={value => setForm({ ...form, area: value })} />
+          <SelectField label="סוג נופש" value={form.vacationType} options={['שבת חתן', 'משפחה', 'זוגות', 'קבוצה', 'חג']} onChange={value => setForm({ ...form, vacationType: value })} />
+          <Field label="שם לקוח" value={form.customerName} onChange={value => setForm({ ...form, customerName: value })} />
+          <Field label="טלפון" value={form.customerPhone} onChange={value => setForm({ ...form, customerPhone: value })} />
+          <Field className="full" label="הערות" value={form.notes} onChange={value => setForm({ ...form, notes: value })} />
+        </div>
+        <div className="actions" style={{ marginTop: 12 }}>
+          <button className="primary-btn" type="button" onClick={() => setChecked(true)}>
+            <Search size={16} /> בדוק
+          </button>
+          <button className="ghost-btn" type="button" onClick={createLeadFromForm}>שמור פנייה בלי הצעה</button>
+        </div>
+      </section>
+
+      {checked && (
+        <section className="card">
+          <h2 className="section-title">תוצאות</h2>
+          <div className="list">
+            {results.map(result => (
+              <div className="list-item" key={result.complex.id}>
+                <div className="item-head">
+                  <div>
+                    <p className="item-title">{result.complex.name}</p>
+                    <span className="muted">{result.complex.city} · עד {result.complex.maxGuests} אורחים · {result.complex.rooms} חדרים</span>
+                  </div>
+                  <span className={`availability-icon ${result.conflicts.length ? 'busy' : 'open'}`} title={result.conflicts.length ? 'יש סימון בלוח לתאריכים האלה' : 'אין סימון בלוח לתאריכים האלה'}>
+                    {result.conflicts.length ? <CalendarX size={18} /> : <CalendarCheck size={18} />}
+                  </span>
+                </div>
+                {result.conflicts.length > 0 && (
+                  <div className="muted">
+                    {result.conflicts.map(block => `${statusLabels[block.status]}: ${formatDateLine(block.startDate, block.endDate)}`).join(' | ')}
+                  </div>
+                )}
+                <div className="actions">
+                  {result.complex.ownerPhone && (
+                    <>
+                      <a className="secondary-btn" href={`tel:${result.complex.ownerPhone}`}>שיחה לבעל מתחם</a>
+                      <a className="primary-btn" href={getOwnerWhatsappHref(result.complex)} target="_blank" rel="noreferrer">
+                        <MessageCircle size={16} /> WhatsApp
+                      </a>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function StaysView({ state }: { state: AppState }) {
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth());
+  const [year, setYear] = useState(now.getFullYear());
+  const [notificationStatus, setNotificationStatus] = useState(
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
+  );
+  const today = todayYMD();
+  const allEvents = useMemo(() => getStayEvents(state), [state]);
+  const upcomingEvents = allEvents.filter(event => event.date >= today).slice(0, 40);
+  const reminders = allEvents.filter(event => event.date === today || event.reminderDate === today);
+  const grid = getMonthGrid(year, month);
+
+  useEffect(() => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    if (!reminders.length) return;
+
+    const key = `kalanofesh-reminders-${today}`;
+    const sent = new Set((localStorage.getItem(key) || '').split(',').filter(Boolean));
+    reminders.forEach(reminder => {
+      if (sent.has(reminder.id)) return;
+      const typeLabel = reminder.type === 'arrival' ? 'כניסה' : 'יציאה';
+      const timing = reminder.date === today ? 'היום' : 'בעוד 3 ימים';
+      new Notification(`קלנופש: ${typeLabel} ${timing}`, {
+        body: `${reminder.customerName} - ${reminder.complexName}`,
+        tag: reminder.id,
+      });
+      sent.add(reminder.id);
+    });
+    localStorage.setItem(key, Array.from(sent).join(','));
+  }, [reminders, today]);
+
+  const requestNotifications = async () => {
+    if (typeof Notification === 'undefined') return;
+    const permission = await Notification.requestPermission();
+    setNotificationStatus(permission);
+  };
+
+  const moveMonth = (direction: -1 | 1) => {
+    const next = new Date(year, month + direction, 1);
+    setYear(next.getFullYear());
+    setMonth(next.getMonth());
+  };
+
+  return (
+    <div className="grid">
+      <section className="card">
+        <div className="item-head">
+          <div>
+            <h2 className="section-title">לוח כניסות ויציאות</h2>
+            <p className="muted">תזכורות מופיעות 3 ימים לפני ובאותו יום, לפי סימונים שיש בהם לקוח.</p>
+          </div>
+          <span className="pill check">{upcomingEvents.length} קרובים</span>
+        </div>
+        <div className="actions" style={{ marginTop: 12 }}>
+          <button className="secondary-btn" type="button" onClick={requestNotifications} disabled={notificationStatus === 'granted' || notificationStatus === 'unsupported'}>
+            <BellRing size={16} /> {notificationStatus === 'granted' ? 'התראות פעילות' : 'הפעל התראות'}
+          </button>
+          {notificationStatus === 'unsupported' && <span className="muted">הדפדפן הזה לא תומך בהתראות.</span>}
+        </div>
+      </section>
+
+      <section className="card">
+        <h2 className="section-title">תזכורות להיום</h2>
+        <div className="list">
+          {reminders.length === 0 && <p className="muted">אין תזכורות להיום.</p>}
+          {reminders.map(event => (
+            <StayEventItem event={event} key={event.id} reminder />
+          ))}
+        </div>
+      </section>
+
+      <section className="grid content-grid">
+        <div className="card">
+          <h2 className="section-title">רשימה קרובה</h2>
+          <div className="list">
+            {upcomingEvents.length === 0 && <p className="muted">אין כניסות או יציאות קרובות.</p>}
+            {upcomingEvents.map(event => (
+              <StayEventItem event={event} key={event.id} />
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="item-head">
+            <button className="ghost-btn" type="button" onClick={() => moveMonth(-1)}>הקודם</button>
+            <h2 className="section-title">{new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' }).format(new Date(year, month, 1))}</h2>
+            <button className="ghost-btn" type="button" onClick={() => moveMonth(1)}>הבא</button>
+          </div>
+          <div className="calendar stay-calendar">
+            <div className="calendar-head">
+              {HEBREW_WEEKDAYS_SHORT.map(day => <span key={day}>{day}</span>)}
+            </div>
+            {grid.map((week, weekIndex) => (
+              <div className="calendar-row" key={weekIndex}>
+                {week.map((day, dayIndex) => {
+                  if (!day) return <span key={dayIndex} />;
+                  const dateStr = toYMD(day);
+                  const dayEvents = allEvents.filter(event => event.date === dateStr);
+                  return (
+                    <div className={`day stay-day ${dayEvents.length ? 'has-stays' : ''}`} key={dateStr}>
+                      <span>{day.getDate()}</span>
+                      {dayEvents.slice(0, 2).map(event => (
+                        <small className={event.type} key={event.id}>{event.type === 'arrival' ? 'כניסה' : 'יציאה'}</small>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function StayEventItem({ event, reminder = false }: { event: StayEvent; reminder?: boolean }) {
+  const typeLabel = event.type === 'arrival' ? 'כניסה' : 'יציאה';
+  const reminderLabel = event.date === todayYMD() ? 'היום' : 'בעוד 3 ימים';
+
+  return (
+    <div className={`list-item stay-event ${event.type}`}>
+      <div className="item-head">
+        <div>
+          <p className="item-title">{typeLabel}: {event.customerName}</p>
+          <span className="muted">{formatDateLine(event.date)} · {event.complexName}</span>
+        </div>
+        <span className={`pill ${event.type === 'arrival' ? 'available' : 'check'}`}>{reminder ? reminderLabel : typeLabel}</span>
+      </div>
+      {event.customerPhone && <span className="muted">{event.customerPhone}</span>}
+      {event.note && <span className="muted">{event.note}</span>}
+      {event.customerPhone && (
+        <div className="actions">
+          <a className="secondary-btn" href={`tel:${event.customerPhone}`}><Phone size={15} /> שיחה</a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CalendarView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
+  const now = new Date();
+  const [complexId, setComplexId] = useState(state.complexes[0]?.id ?? '');
+  const [month, setMonth] = useState(now.getMonth());
+  const [year, setYear] = useState(now.getFullYear());
+  const [status, setStatus] = useState<AvailabilityStatus>('booked');
+  const [selectedDate, setSelectedDate] = useState(todayYMD());
+  const [rangeForm, setRangeForm] = useState({
+    startDate: todayYMD(),
+    endDate: '',
+    customerName: '',
+    customerPhone: '',
+    note: '',
+  });
+  const selected = state.complexes.find(complex => complex.id === complexId);
+  const grid = getMonthGrid(year, month);
+  const blocks = state.availabilityBlocks.filter(block => block.complexId === complexId);
+  const selectedDateEnd = useMemo(() => {
+    const [dateYear, dateMonth, dateDay] = selectedDate.split('-').map(Number);
+    return toYMD(new Date(dateYear, dateMonth - 1, dateDay + 1));
+  }, [selectedDate]);
+  const dailyAvailability = useMemo(() => (
+    state.complexes
+      .filter(complex => complex.active)
+      .map(complex => {
+        const block = state.availabilityBlocks.find(item =>
+          item.complexId === complex.id &&
+          item.status !== 'available' &&
+          hasDateConflict(item, selectedDate, selectedDateEnd)
+        );
+
+        return { complex, block };
+      })
+  ), [selectedDate, selectedDateEnd, state.availabilityBlocks, state.complexes]);
+  const freeComplexes = dailyAvailability.filter(item => !item.block);
+
+  const saveBlock = async (blockData: {
+    complexId: string;
+    startDate: string;
+    endDate: string;
+    status: AvailabilityStatus;
+    customerName?: string;
+    customerPhone?: string;
+    note?: string;
+  }) => {
+    if (session) {
+      const block = await insertCloudAvailability(session, blockData);
+      persist({ ...state, availabilityBlocks: [...state.availabilityBlocks, block] });
+      return;
+    }
+
+    const next = createAvailabilityBlock(state, blockData);
+    persist(next);
+  };
+
+  const selectDay = (date: Date) => {
+    const dateStr = toYMD(date);
+    if (isPastDate(dateStr)) return;
+    const endDate = toYMD(new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1));
+
+    setSelectedDate(dateStr);
+    setRangeForm(current => ({
+      ...current,
+      startDate: dateStr,
+      endDate,
+    }));
+  };
+
+  const markSelectedDay = async () => {
+    if (isPastDate(selectedDate)) return;
+
+    await saveBlock({
+      complexId,
+      startDate: selectedDate,
+      endDate: selectedDateEnd,
+      status,
+      note: rangeForm.note || 'סימון מהיר מהבדיקה היומית',
+    });
+  };
+
+  const saveRange = async () => {
+    if (!rangeForm.startDate || !rangeForm.endDate || rangeForm.endDate <= rangeForm.startDate || isPastDate(rangeForm.startDate)) return;
+
+    await saveBlock({
+      complexId,
+      startDate: rangeForm.startDate,
+      endDate: rangeForm.endDate,
+      status,
+      customerName: rangeForm.customerName || undefined,
+      customerPhone: rangeForm.customerPhone || undefined,
+      note: rangeForm.note || undefined,
+    });
+
+    setRangeForm(current => ({ ...current, customerName: '', customerPhone: '', note: '' }));
+  };
+
+  const moveMonth = (direction: -1 | 1) => {
+    const next = new Date(year, month + direction, 1);
+    setYear(next.getFullYear());
+    setMonth(next.getMonth());
+  };
+
+  return (
+    <div className="grid">
+      <section className="card">
+        <h2 className="section-title">לוח זמינות לפי מתחם</h2>
+        <div className="form-grid">
+          <SelectField label="מתחם" value={complexId} options={state.complexes.map(complex => complex.id)} labels={Object.fromEntries(state.complexes.map(complex => [complex.id, complex.name]))} onChange={setComplexId} />
+          <SelectField label="סימון" value={status} options={['booked', 'tentative', 'offered', 'check', 'maintenance']} labels={statusLabels} onChange={value => setStatus(value as AvailabilityStatus)} />
+        </div>
+        {selected && <p className="muted">{selected.city} · {selected.rooms} חדרים · עד {selected.maxGuests} אורחים</p>}
+      </section>
+
+      <section className="card">
+        <div className="item-head">
+          <h2 className="section-title">סימון טווח אירוח</h2>
+          <span className={`pill ${status}`}>{statusLabels[status]}</span>
+        </div>
+        <div className="form-grid">
+          <DateField
+            label="כניסה"
+            value={rangeForm.startDate}
+            min={todayYMD()}
+            onChange={value => setRangeForm(current => ({
+              ...current,
+              startDate: value,
+              endDate: current.endDate <= value ? '' : current.endDate,
+            }))}
+          />
+          <DateField
+            label="יציאה"
+            value={rangeForm.endDate}
+            min={rangeForm.startDate || todayYMD()}
+            onChange={value => setRangeForm(current => ({ ...current, endDate: value }))}
+          />
+          <Field label="שם לקוח" value={rangeForm.customerName} onChange={value => setRangeForm(current => ({ ...current, customerName: value }))} />
+          <Field label="טלפון" value={rangeForm.customerPhone} onChange={value => setRangeForm(current => ({ ...current, customerPhone: value }))} />
+          <Field className="full" label="הערה פנימית" value={rangeForm.note} onChange={value => setRangeForm(current => ({ ...current, note: value }))} />
+        </div>
+        <div className="actions" style={{ marginTop: 12 }}>
+          <button className="primary-btn" type="button" onClick={saveRange}>שמור טווח</button>
+          <button className="secondary-btn" type="button" onClick={markSelectedDay}>סמן את היום שנבחר</button>
+          <span className="muted">לחיצה על יום בלוח בודקת מי פנוי באותו תאריך וממלאת את טווח הסימון.</span>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="item-head">
+          <button className="ghost-btn" type="button" onClick={() => moveMonth(-1)}>הקודם</button>
+          <h2 className="section-title">{new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' }).format(new Date(year, month, 1))}</h2>
+          <button className="ghost-btn" type="button" onClick={() => moveMonth(1)}>הבא</button>
+        </div>
+        <div className="calendar">
+          <div className="calendar-head">
+            {HEBREW_WEEKDAYS_SHORT.map(day => <span key={day}>{day}</span>)}
+          </div>
+          {grid.map((week, weekIndex) => (
+            <div className="calendar-row" key={weekIndex}>
+              {week.map((day, dayIndex) => {
+                if (!day) return <span key={dayIndex} />;
+                const dateStr = toYMD(day);
+                const block = blocks.find(item => hasDateConflict(item, dateStr, toYMD(new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1))));
+                const className = [
+                  'day',
+                  isPastDate(dateStr) ? 'past' : '',
+                  dateStr === selectedDate ? 'selected' : '',
+                  block?.status === 'booked' || block?.status === 'maintenance' ? 'busy' : '',
+                  block && block.status !== 'booked' && block.status !== 'maintenance' ? 'pending' : '',
+                ].filter(Boolean).join(' ');
+                return (
+                  <button className={className} disabled={isPastDate(dateStr)} key={dateStr} type="button" onClick={() => selectDay(day)} title={`בדיקת זמינות: ${formatDateLine(dateStr)}`}>
+                    <span>{day.getDate()}</span>
+                    <small>{formatHebrewDate(dateStr).split(' ').slice(0, 2).join(' ')}</small>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="item-head">
+          <div>
+            <h2 className="section-title">בדיקת זמינות לתאריך</h2>
+            <p className="muted">{formatDateLine(selectedDate)}</p>
+          </div>
+          <span className="pill available">{freeComplexes.length} פנויים</span>
+        </div>
+        <div className="availability-grid">
+          {dailyAvailability.map(({ complex, block }) => {
+            const isFree = !block;
+
+            return (
+              <div className={`availability-item ${isFree ? 'free' : 'blocked'}`} key={complex.id}>
+                <div className="item-head">
+                  <div>
+                    <p className="item-title">{complex.name}</p>
+                    <span className="muted">{complex.city} · עד {complex.maxGuests} אורחים · {complex.rooms} חדרים</span>
+                  </div>
+                  <span className={`pill ${isFree ? 'available' : block.status}`}>
+                    {isFree ? 'פנוי' : statusLabels[block.status]}
+                  </span>
+                </div>
+                {block?.customerName && <span className="muted">{block.customerName}{block.customerPhone ? ` · ${block.customerPhone}` : ''}</span>}
+                {block?.note && <span className="muted">{block.note}</span>}
+                <div className="actions">
+                  <button
+                    className={isFree ? 'primary-btn' : 'secondary-btn'}
+                    type="button"
+                    onClick={() => {
+                      setComplexId(complex.id);
+                      setRangeForm(current => ({
+                        ...current,
+                        startDate: selectedDate,
+                        endDate: selectedDateEnd,
+                      }));
+                    }}
+                  >
+                    בחר לסימון
+                  </button>
+                  {complex.ownerPhone && <a className="ghost-btn" href={`tel:${complex.ownerPhone}`}>התקשר לבעל מתחם</a>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="card">
+        <h2 className="section-title">סימונים קיימים</h2>
+        <div className="list">
+          {byDate(blocks).filter(block => block.endDate >= todayYMD()).map(block => (
+            <div className="list-item" key={block.id}>
+              <div className="item-head">
+                <p className="item-title">{formatDateLine(block.startDate, block.endDate)}</p>
+                <span className={`pill ${block.status}`}>{statusLabels[block.status]}</span>
+              </div>
+              {block.customerName && <span className="muted">{block.customerName}{block.customerPhone ? ` · ${block.customerPhone}` : ''}</span>}
+              {block.note && <span className="muted">{block.note}</span>}
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function LeadsView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
+  const [dateMode, setDateMode] = useState<'dates' | 'parsha'>('dates');
+  const [form, setForm] = useState({
+    customerName: '',
+    customerPhone: '',
+    startDate: todayYMD(),
+    endDate: '',
+    parsha: '',
+    guests: '20',
+    areaPreference: 'לא משנה',
+    vacationType: 'שבת חתן',
+    budget: '',
+    notes: '',
+  });
+
+  const saveLead = async () => {
+    const hasDates = Boolean(form.startDate && form.endDate && form.endDate > form.startDate);
+    const hasParsha = Boolean(form.parsha.trim());
+    if (!form.customerPhone || (dateMode === 'dates' && !hasDates) || (dateMode === 'parsha' && !hasParsha)) return;
+    const leadData = {
+      ...form,
+      startDate: dateMode === 'dates' ? form.startDate : undefined,
+      endDate: dateMode === 'dates' ? form.endDate : undefined,
+      parsha: dateMode === 'parsha' ? form.parsha.trim() : undefined,
+      guests: Number(form.guests || 0),
+      status: 'new' as const,
+    };
+
+    if (session) {
+      const lead = await insertCloudLead(session, leadData);
+      persist({ ...state, leads: [lead, ...state.leads] });
+      setForm({ ...form, customerName: '', customerPhone: '', parsha: '', notes: '', budget: '' });
+      return;
+    }
+
+    const next = createLead(state, {
+      ...leadData,
+    });
+    persist(next);
+    setForm({ ...form, customerName: '', customerPhone: '', parsha: '', notes: '', budget: '' });
+  };
+
+  const deleteLead = async (leadId: string) => {
+    if (!window.confirm('למחוק את הפנייה הזו?')) return;
+
+    if (session) await deleteCloudLead(session, leadId);
+
+    persist({
+      ...state,
+      leads: state.leads.filter(lead => lead.id !== leadId),
+      leadOffers: state.leadOffers.filter(offer => offer.leadId !== leadId),
+      availabilityBlocks: state.availabilityBlocks.map(block => block.leadId === leadId ? { ...block, leadId: undefined } : block),
+      tasks: state.tasks.map(task => task.leadId === leadId ? { ...task, leadId: undefined } : task),
+    });
+  };
+
+  return (
+    <div className="grid">
+      <section className="card">
+        <h2 className="section-title">פנייה חדשה</h2>
+        <div className="form-grid">
+          <Field label="שם" value={form.customerName} onChange={value => setForm({ ...form, customerName: value })} />
+          <Field label="טלפון" value={form.customerPhone} onChange={value => setForm({ ...form, customerPhone: value })} />
+          <SelectField label="לפי" value={dateMode} options={['dates', 'parsha']} labels={{ dates: 'תאריך', parsha: 'פרשה' }} onChange={value => setDateMode(value as 'dates' | 'parsha')} />
+          {dateMode === 'dates' ? (
+            <>
+              <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate <= value ? '' : form.endDate })} />
+              <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
+            </>
+          ) : (
+            <Field label="פרשה" value={form.parsha} onChange={value => setForm({ ...form, parsha: value })} placeholder="לדוגמה: פרשת נח" />
+          )}
+          <Field label="אורחים" value={form.guests} type="number" min="1" onChange={value => setForm({ ...form, guests: value })} />
+          <Field label="תקציב" value={form.budget} onChange={value => setForm({ ...form, budget: value })} />
+          <Field className="full" label="הערות" value={form.notes} onChange={value => setForm({ ...form, notes: value })} />
+        </div>
+        <button className="primary-btn" style={{ marginTop: 12 }} type="button" onClick={saveLead}>
+          <Plus size={16} /> שמור פנייה
+        </button>
+      </section>
+
+      <section className="card">
+        <h2 className="section-title">פניות</h2>
+        <div className="list">
+          {state.leads.map(lead => (
+            <div className="list-item" key={lead.id}>
+              <div className="item-head">
+                <p className="item-title">{lead.customerName}</p>
+                <span className="pill offered">{leadStatusLabels[lead.status]}</span>
+              </div>
+              <span className="muted">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
+              <span className="muted">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}</span>
+              {lead.notes && <span className="muted">{lead.notes}</span>}
+              <div className="actions">
+                <a className="secondary-btn" href={`tel:${lead.customerPhone}`}><Phone size={15} /> שיחה</a>
+                <button className="ghost-btn danger-btn" type="button" onClick={() => deleteLead(lead.id)}>
+                  <Trash2 size={15} /> מחק
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TasksView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
+  const [title, setTitle] = useState('');
+
+  const addTask = async () => {
+    if (!title.trim()) return;
+    const taskData = { title: title.trim(), dueDate: todayYMD() };
+
+    if (session) {
+      const task = await insertCloudTask(session, taskData);
+      persist({ ...state, tasks: [task, ...state.tasks] });
+      setTitle('');
+      return;
+    }
+
+    persist(createTask(state, taskData));
+    setTitle('');
+  };
+
+  const closeTask = async (taskId: string) => {
+    if (session) await updateCloudTaskStatus(session, taskId, 'done');
+    persist({ ...state, tasks: state.tasks.map(item => item.id === taskId ? { ...item, status: 'done' } : item) });
+  };
+
+  return (
+    <div className="grid">
+      <section className="card">
+        <h2 className="section-title">משימה חדשה</h2>
+        <div className="actions">
+          <input className="input" value={title} onChange={event => setTitle(event.target.value)} placeholder="לדוגמה: לבדוק מחיר לשבת הקרובה" />
+          <button className="primary-btn" type="button" onClick={addTask}>הוסף</button>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2 className="section-title">משימות פתוחות</h2>
+        <div className="list">
+          {state.tasks.filter(task => task.status === 'open').map(task => (
+            <div className="list-item" key={task.id}>
+              <div className="item-head">
+                <p className="item-title">{task.title}</p>
+                <button className="ghost-btn" type="button" onClick={() => closeTask(task.id)}>
+                  <CheckCircle2 size={16} /> סגור
+                </button>
+              </div>
+              <span className="muted">לתאריך: {formatGregorianDate(task.dueDate)}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  min,
+  placeholder,
+  className = '',
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  min?: string;
+  placeholder?: string;
+  className?: string;
+}) {
+  return (
+    <label className={`field ${className}`}>
+      <span className="label">{label}</span>
+      <input className="input" value={value} type={type} min={min} placeholder={placeholder} onChange={event => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function DateField({ label, value, min, onChange }: { label: string; value: string; min: string; onChange: (value: string) => void }) {
+  return (
+    <label className="field">
+      <span className="label">{label}</span>
+      <input className="input" type="date" value={value} min={min} onChange={event => onChange(event.target.value)} />
+      {value && <span className="muted">{formatHebrewDate(value)}</span>}
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  labels,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  labels?: Record<string, string>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="field">
+      <span className="label">{label}</span>
+      <select className="input" value={value} onChange={event => onChange(event.target.value)}>
+        {options.map(option => <option key={option} value={option}>{labels?.[option] ?? option}</option>)}
+      </select>
+    </label>
+  );
+}
+
+export default App;
+

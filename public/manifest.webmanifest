@@ -1,0 +1,19 @@
+{
+  "name": "קלנופש",
+  "short_name": "קלנופש",
+  "description": "אפליקציה פרטית לניהול זמינות מתחמי נופש",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f5ee",
+  "theme_color": "#111827",
+  "dir": "rtl",
+  "lang": "he",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

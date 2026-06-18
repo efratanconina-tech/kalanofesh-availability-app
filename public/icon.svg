@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="קלנופש">
+  <defs>
+    <linearGradient id="bg" x1="84" y1="40" x2="428" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1f2937"/>
+      <stop offset="1" stop-color="#0b1120"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="128" y1="72" x2="384" y2="430" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f3d991"/>
+      <stop offset="0.52" stop-color="#cda85b"/>
+      <stop offset="1" stop-color="#8f6a2f"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <path d="M138 355V202c0-55 45-100 100-100h40c55 0 100 45 100 100v153" fill="none" stroke="url(#gold)" stroke-width="30" stroke-linecap="round"/>
+  <path d="M112 373h288" stroke="url(#gold)" stroke-width="28" stroke-linecap="round"/>
+  <path d="M176 152 256 92l80 60" fill="none" stroke="#f3d991" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="357" cy="137" r="13" fill="#f3d991"/>
+  <text x="256" y="302" text-anchor="middle" direction="rtl" unicode-bidi="bidi-override"
+        font-family="Arial, 'Noto Sans Hebrew', sans-serif" font-size="132" font-weight="900"
+        fill="#fffaf0">קל</text>
+</svg>
