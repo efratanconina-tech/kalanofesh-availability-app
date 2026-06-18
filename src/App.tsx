@@ -42,16 +42,18 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.18.3';
+const APP_VERSION = '2026.06.18.4';
 
 type ParsedStayImport = {
   id: string;
+  importType: 'stay' | 'availability';
   sourceLine: string;
   startDate: string;
   endDate: string;
   customerName: string;
   complexId?: string;
   complexName?: string;
+  status: AvailabilityStatus;
   amount?: string;
   invoice: boolean;
   paid: boolean;
@@ -179,30 +181,39 @@ function currentImportYear(): number {
   return new Date().getFullYear();
 }
 
+function normalizeImportedYear(year?: number): number {
+  if (!year) return currentImportYear();
+  if (year < 100) return 2000 + year;
+  return year;
+}
+
 function normalizeImportedDate(day: number, month: number, year = currentImportYear()): string {
   return toYMD(new Date(year, month - 1, day));
 }
 
 function parseDateRangeText(value: string): { startDate: string; endDate: string } | null {
-  const compact = value.replace(/\s+/g, '');
-  const range = compact.match(/^(\d{1,2})(?:\/(\d{1,2}))?-(\d{1,2})(?:\/(\d{1,2}))?$/);
+  const compact = value.replace(/\s+/g, '').replace(/\./g, '/');
+  const range = compact.match(/^(\d{1,2})(?:\/(\d{1,2}))?(?:\/(\d{2,4}))?-(\d{1,2})(?:\/(\d{1,2}))?(?:\/(\d{2,4}))?$/);
   if (range) {
     const startDay = Number(range[1]);
-    const startMonth = Number(range[2] ?? range[4]);
-    const endDay = Number(range[3]);
-    const endMonth = Number(range[4] ?? startMonth);
+    const startMonth = Number(range[2] ?? range[5]);
+    const startYear = normalizeImportedYear(range[3] ? Number(range[3]) : range[6] ? Number(range[6]) : undefined);
+    const endDay = Number(range[4]);
+    const endMonth = Number(range[5] ?? startMonth);
+    const endYear = normalizeImportedYear(range[6] ? Number(range[6]) : startYear);
     if (!startMonth || !endMonth) return null;
     return {
-      startDate: normalizeImportedDate(startDay, startMonth),
-      endDate: normalizeImportedDate(endDay, endMonth),
+      startDate: normalizeImportedDate(startDay, startMonth, startYear),
+      endDate: normalizeImportedDate(endDay, endMonth, endYear),
     };
   }
 
-  const single = compact.match(/^(\d{1,2})\/(\d{1,2})$/);
+  const single = compact.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
   if (single) {
     const day = Number(single[1]);
     const month = Number(single[2]);
-    const startDate = normalizeImportedDate(day, month);
+    const year = normalizeImportedYear(single[3] ? Number(single[3]) : undefined);
+    const startDate = normalizeImportedDate(day, month, year);
     return {
       startDate,
       endDate: toYMD(addDays(dateFromYMD(startDate), 1)),
@@ -210,6 +221,13 @@ function parseDateRangeText(value: string): { startDate: string; endDate: string
   }
 
   return null;
+}
+
+function extractDateRangeFromLine(line: string): { raw: string; startDate: string; endDate: string } | null {
+  const match = line.replace(/\./g, '/').match(/(\d{1,2}(?:\/\d{1,2})?(?:\/\d{2,4})?(?:\s*-\s*\d{1,2}(?:\/\d{1,2})?(?:\/\d{2,4})?)?)/);
+  if (!match) return null;
+  const range = parseDateRangeText(match[1]);
+  return range ? { raw: match[1], ...range } : null;
 }
 
 function splitImportLine(line: string): string[] {
@@ -282,18 +300,73 @@ function parseStayImportList(input: string, state: AppState): ParsedStayImport[]
 
     return [{
       id: crypto.randomUUID(),
+      importType: 'stay',
       sourceLine: line,
       startDate: range.startDate,
       endDate: range.endDate,
       customerName,
       complexId: complex?.id,
       complexName: complex?.name,
+      status: 'booked',
       amount,
       invoice,
       paid,
       note: notes.join(' | '),
     }];
   });
+}
+
+function parseAvailabilityImportList(input: string, state: AppState): ParsedStayImport[] {
+  const lines = input
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  const headerIndex = lines.findIndex(line => /פנויות|פנויים|זמינים|זמינות/.test(line));
+  if (headerIndex < 0) return [];
+
+  const header = lines[headerIndex];
+  const complex = findComplexInText(header, state.complexes);
+  if (!complex) return [];
+
+  const headerTail = header.includes(':') ? header.split(':').slice(1).join(':').trim() : '';
+  const dateLines = [headerTail, ...lines.slice(headerIndex + 1)].filter(Boolean);
+
+  return dateLines.flatMap(line => {
+    const range = extractDateRangeFromLine(line);
+    if (!range) return [];
+
+    const noteText = line
+      .replace(range.raw, '')
+      .replace(/[()]/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    return [{
+      id: crypto.randomUUID(),
+      importType: 'availability',
+      sourceLine: line,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      customerName: 'פנוי',
+      complexId: complex.id,
+      complexName: complex.name,
+      status: 'available',
+      invoice: false,
+      paid: false,
+      note: [
+        'סומן כפנוי מתוך רשימה',
+        noteText,
+        `מקור: ${line}`,
+      ].filter(Boolean).join(' | '),
+    }];
+  });
+}
+
+function parseAssistantImportList(input: string, state: AppState): ParsedStayImport[] {
+  const availabilityItems = parseAvailabilityImportList(input, state);
+  if (availabilityItems.length) return availabilityItems;
+  return parseStayImportList(input, state);
 }
 
 function buildComplexShareText(complex: Complex): string {
@@ -553,17 +626,21 @@ function AssistantView({
     {
       id: 'welcome',
       role: 'assistant',
-      text: 'כתבי לי מה לבדוק, או הדביקי רשימת כניסות. למשל: "רשימת שבתות פנויות לחודשים הקרובים" או רשימה כמו "14-15/7 - נימני - 1,500 ✅".',
+      text: 'כתבי לי מה לבדוק, או הדביקי רשימה. למשל: "רשימת שבתות פנויות לחודשים הקרובים", "שבתות פנויות באחוזה בהר: 17.7.26", או "14-15/7 - נימני - 1,500 ✅".',
     },
   ]);
 
   const sendMessage = (text = input) => {
     const question = text.trim();
     if (!question) return;
-    const parsedItems = parseStayImportList(question, state);
+    const parsedItems = parseAssistantImportList(question, state);
+    const availabilityCount = parsedItems.filter(item => item.importType === 'availability').length;
+    const stayCount = parsedItems.filter(item => item.importType === 'stay').length;
     const importReply = parsedItems.length
       ? [
-          `מצאתי ${parsedItems.length} שורות כניסה/אירוח.`,
+          availabilityCount
+            ? `מצאתי ${availabilityCount} תאריכים פנויים לסימון.`
+            : `מצאתי ${stayCount} שורות כניסה/אירוח.`,
           `${parsedItems.filter(item => item.complexId).length} עם מתחם מזוהה, ${parsedItems.filter(item => !item.complexId).length} בלי מתחם מזוהה.`,
           'תבדקי את הטיוטה למטה ואז לחצי "שמור פריטים מזוהים".',
         ].join('\n')
@@ -596,8 +673,8 @@ function AssistantView({
           complexId: item.complexId!,
           startDate: item.startDate,
           endDate: item.endDate,
-          status: 'booked',
-          customerName: item.customerName,
+          status: item.status,
+          customerName: item.importType === 'stay' ? item.customerName : undefined,
           note: item.note,
         })));
 
@@ -610,8 +687,8 @@ function AssistantView({
           complexId: item.complexId!,
           startDate: item.startDate,
           endDate: item.endDate,
-          status: 'booked',
-          customerName: item.customerName,
+          status: item.status,
+          customerName: item.importType === 'stay' ? item.customerName : undefined,
           note: item.note,
         }), state);
         persist(next);
@@ -620,7 +697,7 @@ function AssistantView({
       setMessages(current => [...current, {
         id: crypto.randomUUID(),
         role: 'assistant',
-        text: `שמרתי ${readyItems.length} כניסות מזוהות בלוח האירוחים. שורות בלי מתחם מזוהה נשארו בחוץ.`,
+        text: `שמרתי ${readyItems.length} פריטים מזוהים בלוח. שורות בלי מתחם מזוהה נשארו בחוץ.`,
       }]);
       setDraftItems([]);
     } finally {
@@ -683,8 +760,8 @@ function AssistantView({
           <div className="import-preview">
             <div className="item-head">
               <div>
-                <h3 className="section-title">טיוטת ייבוא כניסות</h3>
-                <p className="muted">פריטים עם מתחם מזוהה יישמרו כלוח אירוח תפוס. פריטים בלי מתחם נשארים לבדיקה ידנית.</p>
+                <h3 className="section-title">טיוטת ייבוא מהצ׳אט</h3>
+                <p className="muted">כניסות יישמרו כתפוס, ורשימות פנויות יישמרו כפנוי. פריטים בלי מתחם נשארים לבדיקה ידנית.</p>
               </div>
               <span className="pill check">{draftItems.length} שורות</span>
             </div>
@@ -696,8 +773,8 @@ function AssistantView({
                       <p className="item-title">{item.customerName}</p>
                       <span className="muted">{formatGregorianDate(item.startDate)} - {formatGregorianDate(item.endDate)}</span>
                     </div>
-                    <span className={`pill ${item.complexId ? 'available' : 'check'}`}>
-                      {item.complexName ?? 'צריך לבחור מתחם'}
+                    <span className={`pill ${item.complexId ? item.status : 'check'}`}>
+                      {item.complexName ? `${item.complexName} · ${statusLabels[item.status]}` : 'צריך לבחור מתחם'}
                     </span>
                   </div>
                   <span className="muted">
