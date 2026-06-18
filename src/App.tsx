@@ -19,6 +19,7 @@ import {
   Settings,
   Share2,
   Trash2,
+  Upload,
   Users,
   Video,
 } from 'lucide-react';
@@ -42,7 +43,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.18.4';
+const APP_VERSION = '2026.06.18.5';
 
 type ParsedStayImport = {
   id: string;
@@ -175,6 +176,22 @@ function normalizePhone(value: string): string {
   if (digits.startsWith('972')) return digits;
   if (digits.startsWith('0')) return `972${digits.slice(1)}`;
   return digits;
+}
+
+function splitGallery(value?: string): string[] {
+  return (value ?? '')
+    .split(/\n|,/)
+    .map(part => part.trim())
+    .filter(Boolean);
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 function currentImportYear(): number {
@@ -370,13 +387,18 @@ function parseAssistantImportList(input: string, state: AppState): ParsedStayImp
 }
 
 function buildComplexShareText(complex: Complex): string {
+  const shareableImages = [
+    complex.coverImageUrl,
+    ...splitGallery(complex.galleryUrls),
+  ].filter((url): url is string => Boolean(url && /^https?:\/\//.test(url)));
+
   return [
     complex.name,
     `${complex.city} | ${complex.area}`,
     `${complex.rooms} חדרים | עד ${complex.maxGuests} אורחים`,
     complex.salesNote,
     complex.shabbatNotes ? `פרטי שבת: ${complex.shabbatNotes}` : '',
-    complex.coverImageUrl ? `תמונה: ${complex.coverImageUrl}` : '',
+    shareableImages.length ? `תמונות: ${shareableImages.join(' | ')}` : '',
     complex.videoUrl ? `וידאו: ${complex.videoUrl}` : '',
   ].filter(Boolean).join('\n');
 }
@@ -824,6 +846,33 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
     }
   };
 
+  const deleteComplex = async (complex: Complex) => {
+    const approved = window.confirm(`למחוק את ${complex.name} מרשימת המתחמים? ההזמנות הקיימות יישארו בלוח.`);
+    if (!approved) return;
+    await updateComplex(complex, { active: false });
+  };
+
+  const uploadCoverImage = async (complex: Complex, event: { currentTarget: HTMLInputElement }) => {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    const imageUrl = await readFileAsDataUrl(file);
+    await updateComplex(complex, { coverImageUrl: imageUrl });
+  };
+
+  const uploadGalleryImages = async (complex: Complex, event: { currentTarget: HTMLInputElement }) => {
+    const input = event.currentTarget as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (!files.length) return;
+
+    const nextImages = await Promise.all(files.map(readFileAsDataUrl));
+    const currentImages = splitGallery(complex.galleryUrls);
+    await updateComplex(complex, { galleryUrls: [...currentImages, ...nextImages].join('\n') });
+  };
+
   const getWhatsappHref = (complex: Complex) => {
     const text = encodeURIComponent(buildComplexShareText(complex));
     const phone = normalizePhone(customerPhone);
@@ -853,7 +902,10 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
       </section>
 
       <section className="catalog-grid">
-        {complexes.map(complex => (
+        {complexes.map(complex => {
+          const galleryImages = splitGallery(complex.galleryUrls);
+
+          return (
           <article className="card catalog-card" key={complex.id}>
             {complex.coverImageUrl ? (
               <img className="catalog-image" src={complex.coverImageUrl} alt={complex.name} />
@@ -861,6 +913,14 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
               <div className="catalog-placeholder">
                 <Image size={28} />
                 <span>מקום לתמונה</span>
+              </div>
+            )}
+
+            {galleryImages.length > 0 && (
+              <div className="gallery-strip" aria-label={`גלריית תמונות ${complex.name}`}>
+                {galleryImages.slice(0, 6).map((imageUrl, index) => (
+                  <img src={imageUrl} alt={`${complex.name} תמונה ${index + 1}`} key={`${complex.id}-gallery-${index}`} />
+                ))}
               </div>
             )}
 
@@ -876,7 +936,29 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
               <Field label="טלפון בעל מתחם" value={complex.ownerPhone ?? ''} onChange={value => updateComplex(complex, { ownerPhone: value })} />
               <Field label="קישור תמונה" value={complex.coverImageUrl ?? ''} onChange={value => updateComplex(complex, { coverImageUrl: value })} />
               <Field label="קישור וידאו" value={complex.videoUrl ?? ''} onChange={value => updateComplex(complex, { videoUrl: value })} />
+              <Field className="full" label="קישורי גלריה" value={complex.galleryUrls ?? ''} onChange={value => updateComplex(complex, { galleryUrls: value })} placeholder="אפשר להדביק כמה קישורים, כל קישור בשורה" />
               <Field className="full" label="טקסט קצר ללקוח" value={complex.salesNote ?? ''} onChange={value => updateComplex(complex, { salesNote: value })} />
+            </div>
+
+            <div className="media-upload-row">
+              <label className="secondary-btn file-btn">
+                <Upload size={16} /> העלאת תמונת שער
+                <input type="file" accept="image/*" onChange={event => uploadCoverImage(complex, event)} />
+              </label>
+              <label className="ghost-btn file-btn">
+                <Image size={16} /> הוספה לגלריה
+                <input type="file" accept="image/*" multiple onChange={event => uploadGalleryImages(complex, event)} />
+              </label>
+              {complex.coverImageUrl && (
+                <button className="ghost-btn" type="button" onClick={() => updateComplex(complex, { coverImageUrl: undefined })}>
+                  נקה תמונת שער
+                </button>
+              )}
+              {galleryImages.length > 0 && (
+                <button className="ghost-btn" type="button" onClick={() => updateComplex(complex, { galleryUrls: undefined })}>
+                  נקה גלריה
+                </button>
+              )}
             </div>
 
             <div className="catalog-preview">
@@ -891,9 +973,13 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
                 שלח במייל
               </a>
               {complex.ownerPhone && <a className="secondary-btn" href={`tel:${complex.ownerPhone}`}>שיחה לבעל מתחם</a>}
+              <button className="ghost-btn danger-btn" type="button" onClick={() => deleteComplex(complex)}>
+                <Trash2 size={16} /> מחק מתחם
+              </button>
             </div>
           </article>
-        ))}
+          );
+        })}
       </section>
     </div>
   );
