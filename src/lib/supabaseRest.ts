@@ -166,6 +166,15 @@ export async function updateCloudComplex(session: CloudSession, complex: Complex
   return fromComplexRow(rows[0]);
 }
 
+export async function updateCloudLead(session: CloudSession, lead: Lead): Promise<Lead> {
+  const rows = await request<LeadRow[]>(`/rest/v1/leads?id=eq.${lead.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(toLeadRow(lead)),
+  }, session);
+
+  return fromLeadRow(rows[0]);
+}
+
 export async function updateCloudTaskStatus(session: CloudSession, taskId: string, status: 'open' | 'done'): Promise<void> {
   await request(`/rest/v1/tasks?id=eq.${taskId}`, {
     method: 'PATCH',

@@ -38,6 +38,7 @@ import {
   isCloudConfigured,
   signIn,
   updateCloudComplex,
+  updateCloudLead,
   updateCloudTaskStatus,
   type CloudSession,
 } from './lib/supabaseRest';
@@ -1703,6 +1704,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
 
 function LeadsView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
   const [dateMode, setDateMode] = useState<'dates' | 'parsha'>('dates');
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [form, setForm] = useState({
     customerName: '',
     customerPhone: '',
@@ -1714,25 +1716,69 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     vacationType: 'שבת חתן',
     budget: '',
     notes: '',
+    status: 'new' as LeadStatus,
   });
+
+  const resetLeadForm = () => {
+    setEditingLeadId(null);
+    setDateMode('dates');
+    setForm({
+      customerName: '',
+      customerPhone: '',
+      startDate: todayYMD(),
+      endDate: '',
+      parsha: '',
+      guests: '20',
+      areaPreference: 'לא משנה',
+      vacationType: 'שבת חתן',
+      budget: '',
+      notes: '',
+      status: 'new',
+    });
+  };
 
   const saveLead = async () => {
     const hasDates = Boolean(form.startDate && form.endDate && form.endDate > form.startDate);
     const hasParsha = Boolean(form.parsha.trim());
     if (!form.customerPhone || (dateMode === 'dates' && !hasDates) || (dateMode === 'parsha' && !hasParsha)) return;
+    const existingLead = editingLeadId ? state.leads.find(lead => lead.id === editingLeadId) : undefined;
     const leadData = {
-      ...form,
+      customerName: form.customerName || 'לקוח ללא שם',
+      customerPhone: form.customerPhone,
       startDate: dateMode === 'dates' ? form.startDate : undefined,
       endDate: dateMode === 'dates' ? form.endDate : undefined,
       parsha: dateMode === 'parsha' ? form.parsha.trim() : undefined,
       guests: Number(form.guests || 0),
-      status: 'new' as const,
+      areaPreference: form.areaPreference,
+      vacationType: form.vacationType,
+      budget: form.budget,
+      notes: form.notes,
+      status: form.status,
     };
+
+    if (existingLead) {
+      const updatedLead = {
+        ...existingLead,
+        ...leadData,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (session) {
+        const cloudLead = await updateCloudLead(session, updatedLead);
+        persist({ ...state, leads: state.leads.map(lead => lead.id === cloudLead.id ? cloudLead : lead) });
+        resetLeadForm();
+        return;
+      }
+
+      persist({ ...state, leads: state.leads.map(lead => lead.id === updatedLead.id ? updatedLead : lead) });
+      resetLeadForm();
+      return;
+    }
 
     if (session) {
       const lead = await insertCloudLead(session, leadData);
       persist({ ...state, leads: [lead, ...state.leads] });
-      setForm({ ...form, customerName: '', customerPhone: '', parsha: '', notes: '', budget: '' });
+      resetLeadForm();
       return;
     }
 
@@ -1740,7 +1786,28 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       ...leadData,
     });
     persist(next);
-    setForm({ ...form, customerName: '', customerPhone: '', parsha: '', notes: '', budget: '' });
+    resetLeadForm();
+  };
+
+  const editLead = (leadId: string) => {
+    const lead = state.leads.find(item => item.id === leadId);
+    if (!lead) return;
+
+    setEditingLeadId(lead.id);
+    setDateMode(lead.parsha ? 'parsha' : 'dates');
+    setForm({
+      customerName: lead.customerName,
+      customerPhone: lead.customerPhone,
+      startDate: lead.startDate ?? todayYMD(),
+      endDate: lead.endDate ?? '',
+      parsha: lead.parsha ?? '',
+      guests: String(lead.guests || 0),
+      areaPreference: lead.areaPreference,
+      vacationType: lead.vacationType,
+      budget: lead.budget ?? '',
+      notes: lead.notes ?? '',
+      status: lead.status,
+    });
   };
 
   const deleteLead = async (leadId: string) => {
@@ -1766,7 +1833,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
   return (
     <div className="grid">
       <section className="card">
-        <h2 className="section-title">פנייה חדשה</h2>
+        <h2 className="section-title">{editingLeadId ? 'עריכת פנייה' : 'פנייה חדשה'}</h2>
         <div className="form-grid">
           <Field label="שם" value={form.customerName} onChange={value => setForm({ ...form, customerName: value })} />
           <Field label="טלפון" value={form.customerPhone} onChange={value => setForm({ ...form, customerPhone: value })} />
@@ -1781,11 +1848,25 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
           )}
           <Field label="אורחים" value={form.guests} type="number" min="1" onChange={value => setForm({ ...form, guests: value })} />
           <Field label="תקציב" value={form.budget} onChange={value => setForm({ ...form, budget: value })} />
+          <SelectField
+            label="סטטוס"
+            value={form.status}
+            options={Object.keys(leadStatusLabels)}
+            labels={leadStatusLabels}
+            onChange={value => setForm({ ...form, status: value as LeadStatus })}
+          />
           <Field className="full" label="הערות" value={form.notes} onChange={value => setForm({ ...form, notes: value })} />
         </div>
-        <button className="primary-btn" style={{ marginTop: 12 }} type="button" onClick={saveLead}>
-          <Plus size={16} /> שמור פנייה
-        </button>
+        <div className="actions" style={{ marginTop: 12 }}>
+          <button className="primary-btn" type="button" onClick={saveLead}>
+            <Plus size={16} /> {editingLeadId ? 'עדכן פנייה' : 'שמור פנייה'}
+          </button>
+          {editingLeadId && (
+            <button className="secondary-btn" type="button" onClick={resetLeadForm}>
+              ביטול עריכה
+            </button>
+          )}
+        </div>
       </section>
 
       <section className="card">
@@ -1802,6 +1883,9 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
               {lead.notes && <span className="muted">{lead.notes}</span>}
               <div className="actions">
                 <a className="secondary-btn" href={`tel:${lead.customerPhone}`}><Phone size={15} /> שיחה</a>
+                <button className="ghost-btn" type="button" onClick={() => editLead(lead.id)}>
+                  עריכה
+                </button>
                 <button className="ghost-btn danger-btn" type="button" onClick={() => deleteLead(lead.id)}>
                   <Trash2 size={15} /> מחק
                 </button>
