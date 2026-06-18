@@ -233,6 +233,9 @@ interface AvailabilityBlockRow {
   lead_id?: string | null;
   customer_name?: string | null;
   customer_phone?: string | null;
+  commission_amount?: string | null;
+  commission_paid?: boolean | null;
+  invoice_sent?: boolean | null;
   note?: string | null;
   created_at: string;
   updated_at: string;
@@ -306,6 +309,9 @@ function fromAvailabilityRow(row: AvailabilityBlockRow): AvailabilityBlock {
     leadId: row.lead_id ?? undefined,
     customerName: row.customer_name ?? undefined,
     customerPhone: row.customer_phone ?? undefined,
+    commissionAmount: row.commission_amount ?? undefined,
+    commissionPaid: row.commission_paid ?? false,
+    invoiceSent: row.invoice_sent ?? false,
     note: row.note ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -357,7 +363,7 @@ function fromTaskRow(row: TaskRow): Task {
 }
 
 function toAvailabilityRow(data: Omit<AvailabilityBlock, 'id' | 'createdAt' | 'updatedAt'>) {
-  return {
+  const row: Record<string, unknown> = {
     complex_id: data.complexId,
     start_date: data.startDate,
     end_date: data.endDate,
@@ -367,6 +373,12 @@ function toAvailabilityRow(data: Omit<AvailabilityBlock, 'id' | 'createdAt' | 'u
     customer_phone: data.customerPhone,
     note: data.note,
   };
+
+  if (data.commissionAmount) row.commission_amount = data.commissionAmount;
+  if (data.commissionPaid) row.commission_paid = data.commissionPaid;
+  if (data.invoiceSent) row.invoice_sent = data.invoiceSent;
+
+  return row;
 }
 
 function toComplexRow(data: Complex) {

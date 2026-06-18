@@ -74,6 +74,9 @@ type StayEvent = {
   complexName: string;
   customerName: string;
   customerPhone?: string;
+  commissionAmount?: string;
+  commissionPaid?: boolean;
+  invoiceSent?: boolean;
   status: AvailabilityStatus;
   note?: string;
 };
@@ -169,6 +172,9 @@ function getStayEvents(state: AppState): StayEvent[] {
         complexName: complex?.name ?? 'מתחם',
         customerName,
         customerPhone: block.customerPhone,
+        commissionAmount: block.commissionAmount,
+        commissionPaid: block.commissionPaid,
+        invoiceSent: block.invoiceSent,
         status: block.status,
         note: block.note,
       };
@@ -837,6 +843,9 @@ function AssistantView({
           endDate: item.endDate,
           status: item.status,
           customerName: item.importType === 'stay' ? item.customerName : undefined,
+          commissionAmount: item.amount,
+          commissionPaid: item.paid,
+          invoiceSent: item.invoice,
           note: item.note,
         })));
 
@@ -851,6 +860,9 @@ function AssistantView({
           endDate: item.endDate,
           status: item.status,
           customerName: item.importType === 'stay' ? item.customerName : undefined,
+          commissionAmount: item.amount,
+          commissionPaid: item.paid,
+          invoiceSent: item.invoice,
           note: item.note,
         }), state);
         persist(next);
@@ -1539,6 +1551,9 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     endDate: '',
     customerName: '',
     customerPhone: '',
+    commissionAmount: '',
+    commissionPaid: false,
+    invoiceSent: false,
     note: '',
   });
   const [notificationStatus, setNotificationStatus] = useState(
@@ -1597,6 +1612,9 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       status: 'booked' as AvailabilityStatus,
       customerName: closeForm.customerName || undefined,
       customerPhone: closeForm.customerPhone || undefined,
+      commissionAmount: closeForm.commissionAmount || undefined,
+      commissionPaid: closeForm.commissionPaid,
+      invoiceSent: closeForm.invoiceSent,
       note: closeForm.note || 'סגירה ממסך אירוחים',
     };
 
@@ -1611,6 +1629,9 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       ...current,
       customerName: '',
       customerPhone: '',
+      commissionAmount: '',
+      commissionPaid: false,
+      invoiceSent: false,
       note: '',
     }));
     setShowCloseForm(false);
@@ -1658,6 +1679,23 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
             />
             <Field label="שם לקוח" value={closeForm.customerName} onChange={value => setCloseForm(current => ({ ...current, customerName: value }))} />
             <Field label="טלפון" value={closeForm.customerPhone} onChange={value => setCloseForm(current => ({ ...current, customerPhone: value }))} />
+            <Field label="עמלה שלקחנו" value={closeForm.commissionAmount} onChange={value => setCloseForm(current => ({ ...current, commissionAmount: value }))} placeholder="לדוגמה: 1,500" />
+            <label className="owner-select">
+              <input
+                type="checkbox"
+                checked={closeForm.commissionPaid}
+                onChange={event => setCloseForm(current => ({ ...current, commissionPaid: event.target.checked }))}
+              />
+              <span>העמלה שולמה</span>
+            </label>
+            <label className="owner-select">
+              <input
+                type="checkbox"
+                checked={closeForm.invoiceSent}
+                onChange={event => setCloseForm(current => ({ ...current, invoiceSent: event.target.checked }))}
+              />
+              <span>נשלחה חשבונית</span>
+            </label>
             <Field className="full" label="הערה" value={closeForm.note} onChange={value => setCloseForm(current => ({ ...current, note: value }))} />
             <div className="actions full">
               <button className="primary-btn" type="button" onClick={saveCloseBlock}>שמור סגירה</button>
@@ -1742,6 +1780,15 @@ function StayEventItem({ event, reminder = false }: { event: StayEvent; reminder
         <span className={`pill ${event.type === 'arrival' ? 'available' : 'check'}`}>{reminder ? reminderLabel : typeLabel}</span>
       </div>
       {event.customerPhone && <span className="muted">{event.customerPhone}</span>}
+      {(event.commissionAmount || event.commissionPaid || event.invoiceSent) && (
+        <span className="muted">
+          {[
+            event.commissionAmount ? `עמלה: ${event.commissionAmount}` : '',
+            event.commissionPaid ? 'שולם' : '',
+            event.invoiceSent ? 'נשלחה חשבונית' : '',
+          ].filter(Boolean).join(' · ')}
+        </span>
+      )}
       {event.note && <span className="muted">{event.note}</span>}
       {event.customerPhone && (
         <div className="actions">

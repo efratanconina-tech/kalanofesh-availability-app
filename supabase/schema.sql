@@ -66,6 +66,9 @@ create table if not exists public.availability_blocks (
   lead_id uuid references public.leads(id) on delete set null,
   customer_name text,
   customer_phone text,
+  commission_amount text,
+  commission_paid boolean not null default false,
+  invoice_sent boolean not null default false,
   note text,
   created_by uuid references public.profiles(id),
   updated_by uuid references public.profiles(id),
@@ -73,6 +76,10 @@ create table if not exists public.availability_blocks (
   updated_at timestamptz not null default now(),
   constraint availability_dates_valid check (end_date > start_date)
 );
+
+alter table public.availability_blocks add column if not exists commission_amount text;
+alter table public.availability_blocks add column if not exists commission_paid boolean not null default false;
+alter table public.availability_blocks add column if not exists invoice_sent boolean not null default false;
 
 create table if not exists public.lead_offers (
   id uuid primary key default gen_random_uuid(),

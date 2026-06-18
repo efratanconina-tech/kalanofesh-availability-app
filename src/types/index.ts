@@ -38,6 +38,9 @@ export interface AvailabilityBlock {
   leadId?: string;
   customerName?: string;
   customerPhone?: string;
+  commissionAmount?: string;
+  commissionPaid?: boolean;
+  invoiceSent?: boolean;
   note?: string;
   createdAt: string;
   updatedAt: string;
