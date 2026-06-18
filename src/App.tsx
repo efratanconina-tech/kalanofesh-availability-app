@@ -45,7 +45,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.18.9';
+const APP_VERSION = '2026.06.18.10';
 
 type ParsedStayImport = {
   id: string;
@@ -993,11 +993,19 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
             </div>
 
             <div className="form-grid">
+              <Field label="שם מתחם" value={complex.name} onChange={value => updateComplex(complex, { name: value })} />
+              <Field label="אזור" value={complex.area} onChange={value => updateComplex(complex, { area: value })} />
+              <Field label="עיר" value={complex.city} onChange={value => updateComplex(complex, { city: value })} />
+              <Field label="חדרים" value={String(complex.rooms)} type="number" min="0" onChange={value => updateComplex(complex, { rooms: Number(value || 0) })} />
+              <Field label="מקסימום אורחים" value={String(complex.maxGuests)} type="number" min="0" onChange={value => updateComplex(complex, { maxGuests: Number(value || 0) })} />
+              <Field label="שם בעל מתחם" value={complex.ownerName ?? ''} onChange={value => updateComplex(complex, { ownerName: value })} />
               <Field label="טלפון בעל מתחם" value={complex.ownerPhone ?? ''} onChange={value => updateComplex(complex, { ownerPhone: value })} />
               <Field label="קישור תמונה" value={complex.coverImageUrl ?? ''} onChange={value => updateComplex(complex, { coverImageUrl: value })} />
               <Field label="קישור וידאו" value={complex.videoUrl ?? ''} onChange={value => updateComplex(complex, { videoUrl: value })} />
               <Field className="full" label="קישורי גלריה" value={complex.galleryUrls ?? ''} onChange={value => updateComplex(complex, { galleryUrls: value })} placeholder="אפשר להדביק כמה קישורים, כל קישור בשורה" />
               <Field className="full" label="טקסט קצר ללקוח" value={complex.salesNote ?? ''} onChange={value => updateComplex(complex, { salesNote: value })} />
+              <Field className="full" label="הערות פנימיות" value={complex.internalNotes ?? ''} onChange={value => updateComplex(complex, { internalNotes: value })} />
+              <Field className="full" label="פרטי שבת" value={complex.shabbatNotes ?? ''} onChange={value => updateComplex(complex, { shabbatNotes: value })} />
             </div>
 
             <div className="media-upload-row">
