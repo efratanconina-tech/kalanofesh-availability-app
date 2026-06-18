@@ -86,8 +86,8 @@ type StayEvent = {
 };
 
 const statusLabels: Record<AvailabilityStatus, string> = {
-  available: 'פנוי',
-  booked: 'תפוס',
+  available: 'פנוי בוודאות',
+  booked: 'תפוס בוודאות',
   tentative: 'בהמתנה',
   offered: 'הוצע',
   check: 'לבדיקה',
@@ -2186,7 +2186,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
         <h2 className="section-title">לוח זמינות לפי מתחם</h2>
         <div className="form-grid">
           <SelectField label="מתחם" value={complexId} options={state.complexes.map(complex => complex.id)} labels={Object.fromEntries(state.complexes.map(complex => [complex.id, complex.name]))} onChange={setComplexId} />
-          <SelectField label="סימון" value={status} options={['booked', 'tentative', 'offered', 'check', 'maintenance']} labels={statusLabels} onChange={value => setStatus(value as AvailabilityStatus)} />
+          <SelectField label="סימון" value={status} options={['booked', 'available']} labels={statusLabels} onChange={value => setStatus(value as AvailabilityStatus)} />
         </div>
         {selected && <p className="muted">{selected.city} · {selected.rooms} חדרים · עד {selected.maxGuests} אורחים</p>}
       </section>
@@ -2244,8 +2244,9 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
                   'day',
                   isPastDate(dateStr) ? 'past' : '',
                   dateStr === selectedDate ? 'selected' : '',
-                  block?.status === 'booked' || block?.status === 'maintenance' ? 'busy' : '',
-                  block && block.status !== 'booked' && block.status !== 'maintenance' ? 'pending' : '',
+                  block?.status === 'available' ? 'free' : '',
+                  block?.status === 'booked' ? 'busy' : '',
+                  block && block.status !== 'available' && block.status !== 'booked' ? 'pending' : '',
                 ].filter(Boolean).join(' ');
                 return (
                   <button className={className} disabled={isPastDate(dateStr)} key={dateStr} type="button" onClick={() => selectDay(day)} title={`בדיקת זמינות: ${formatDateLine(dateStr)}`}>
@@ -2279,7 +2280,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
                     <span className="muted">{complex.city} · עד {complex.maxGuests} אורחים · {complex.rooms} חדרים</span>
                   </div>
                   <span className={`pill ${isFree ? 'available' : block.status}`}>
-                    {isFree ? 'פנוי' : statusLabels[block.status]}
+                    {isFree ? 'פנוי בוודאות' : statusLabels[block.status]}
                   </span>
                 </div>
                 {block?.customerName && <span className="muted">{block.customerName}{block.customerPhone ? ` · ${block.customerPhone}` : ''}</span>}
