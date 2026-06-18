@@ -44,7 +44,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.18.7';
+const APP_VERSION = '2026.06.18.8';
 
 type ParsedStayImport = {
   id: string;
@@ -600,6 +600,16 @@ function LoginButton({ onLogin }: { onLogin: (session: CloudSession) => void }) 
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
+    if (!isCloudConfigured()) {
+      setError('החיבור לענן לא מוגדר. צריך להוסיף ב-Vercel את VITE_SUPABASE_URL ואת VITE_SUPABASE_ANON_KEY ואז לעשות Redeploy.');
+      return;
+    }
+
+    if (!email.trim() || !password) {
+      setError('צריך למלא אימייל וסיסמה.');
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
@@ -607,7 +617,8 @@ function LoginButton({ onLogin }: { onLogin: (session: CloudSession) => void }) 
       onLogin(nextSession);
       setOpen(false);
     } catch (event) {
-      setError(event instanceof Error ? event.message : 'הכניסה נכשלה.');
+      console.error(event);
+      setError('לא הצלחתי להתחבר. בדקי שהמשתמש קיים ב-Supabase Auth, שהסיסמה נכונה, ושמשתני Vercel הוגדרו בפרויקט הזה.');
     } finally {
       setLoading(false);
     }
