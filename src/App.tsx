@@ -12,6 +12,7 @@ import {
   Image,
   ListChecks,
   MessageCircle,
+  Pencil,
   Phone,
   Plus,
   Search,
@@ -23,7 +24,7 @@ import {
   Users,
   Video,
 } from 'lucide-react';
-import type { AppState, AvailabilityStatus, Complex, LeadStatus } from './types';
+import type { AppState, AvailabilityStatus, Complex, Lead, LeadStatus } from './types';
 import { createAvailabilityBlock, createLead, createTask, hasDateConflict, loadState, saveState } from './lib/store';
 import { HEBREW_WEEKDAYS_SHORT, formatDateLine, formatGregorianDate, formatHebrewDate, getMonthGrid, isPastDate, toYMD, todayYMD } from './lib/dates';
 import {
@@ -233,6 +234,20 @@ function splitGallery(value?: string): string[] {
     .split(/\n|,/)
     .map(part => part.trim())
     .filter(Boolean);
+}
+
+function buildLeadShareText(lead: Lead): string {
+  return [
+    `פנייה: ${lead.customerName}`,
+    `טלפון: ${lead.customerPhone}`,
+    lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? `תאריכים: ${formatDateLine(lead.startDate, lead.endDate)}` : 'תאריך לא נקבע',
+    `אורחים: ${lead.guests}`,
+    `סוג נופש: ${lead.vacationType}`,
+    `אזור: ${lead.areaPreference}`,
+    lead.budget ? `תקציב: ${lead.budget}` : '',
+    lead.notes ? `הערות: ${lead.notes}` : '',
+    `סטטוס: ${leadStatusLabels[lead.status]}`,
+  ].filter(Boolean).join('\n');
 }
 
 function createSlug(value: string, existingIds: string[]): string {
@@ -2132,6 +2147,27 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     }
   };
 
+  const shareLead = async (lead: Lead) => {
+    const text = buildLeadShareText(lead);
+    const title = `פנייה: ${lead.customerName}`;
+    const shareApi = navigator as Navigator & {
+      share?: (data: { title?: string; text?: string }) => Promise<void>;
+      clipboard?: Navigator['clipboard'];
+    };
+
+    if (shareApi.share) {
+      try {
+        await shareApi.share({ title, text });
+        return;
+      } catch {
+        return;
+      }
+    }
+
+    await navigator.clipboard?.writeText(text);
+    window.alert('פרטי הפנייה הועתקו ללוח.');
+  };
+
   return (
     <div className="grid">
       <section className="card">
@@ -2184,12 +2220,17 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
               <span className="muted">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}</span>
               {lead.notes && <span className="muted">{lead.notes}</span>}
               <div className="actions">
-                <a className="secondary-btn" href={`tel:${lead.customerPhone}`}><Phone size={15} /> שיחה</a>
-                <button className="ghost-btn" type="button" onClick={() => editLead(lead.id)}>
-                  עריכה
+                <a className="secondary-btn icon-only" href={`tel:${lead.customerPhone}`} title="שיחה" aria-label={`שיחה אל ${lead.customerName}`}>
+                  <Phone size={17} />
+                </a>
+                <button className="ghost-btn icon-only" type="button" onClick={() => shareLead(lead)} title="שיתוף פנייה" aria-label={`שיתוף פנייה של ${lead.customerName}`}>
+                  <Share2 size={17} />
                 </button>
-                <button className="ghost-btn danger-btn" type="button" onClick={() => deleteLead(lead.id)}>
-                  <Trash2 size={15} /> מחק
+                <button className="ghost-btn icon-only" type="button" onClick={() => editLead(lead.id)} title="עריכה" aria-label={`עריכת פנייה של ${lead.customerName}`}>
+                  <Pencil size={17} />
+                </button>
+                <button className="ghost-btn danger-btn icon-only" type="button" onClick={() => deleteLead(lead.id)} title="מחיקה" aria-label={`מחיקת פנייה של ${lead.customerName}`}>
+                  <Trash2 size={17} />
                 </button>
               </div>
             </div>
