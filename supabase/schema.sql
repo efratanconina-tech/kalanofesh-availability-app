@@ -108,6 +108,14 @@ alter table public.availability_blocks enable row level security;
 alter table public.lead_offers enable row level security;
 alter table public.tasks enable row level security;
 
+drop policy if exists "active users can read profiles" on public.profiles;
+drop policy if exists "active users can read complexes" on public.complexes;
+drop policy if exists "active users can manage complexes" on public.complexes;
+drop policy if exists "active users can manage leads" on public.leads;
+drop policy if exists "active users can manage availability" on public.availability_blocks;
+drop policy if exists "active users can manage offers" on public.lead_offers;
+drop policy if exists "active users can manage tasks" on public.tasks;
+
 create policy "active users can read profiles"
   on public.profiles for select
   to authenticated
