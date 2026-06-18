@@ -945,6 +945,8 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
   const [area, setArea] = useState(areas[0] ?? 'הכל');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [selectedOwnerIds, setSelectedOwnerIds] = useState<string[]>([]);
+  const [bulkOwnerMessage, setBulkOwnerMessage] = useState('שלום, רציתי לבדוק זמינות ומחיר לתאריך הקרוב.');
   const [showNewComplex, setShowNewComplex] = useState(false);
   const [newComplexForm, setNewComplexForm] = useState({
     name: '',
@@ -955,7 +957,20 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
     ownerName: '',
     ownerPhone: '',
   });
-  const complexes = state.complexes.filter(complex => complex.active && (area === 'הכל' || complex.area === area));
+  const complexes = useMemo(
+    () => state.complexes.filter(complex => complex.active && (area === 'הכל' || complex.area === area)),
+    [area, state.complexes],
+  );
+  const ownerTargets = useMemo(
+    () => complexes.filter(complex => normalizePhone(complex.ownerPhone ?? '')),
+    [complexes],
+  );
+  const selectedOwnerTargets = ownerTargets.filter(complex => selectedOwnerIds.includes(complex.id));
+
+  useEffect(() => {
+    const availableOwnerIds = new Set(ownerTargets.map(complex => complex.id));
+    setSelectedOwnerIds(current => current.filter(id => availableOwnerIds.has(id)));
+  }, [ownerTargets]);
 
   const updateComplex = async (complex: Complex, patch: Partial<Complex>) => {
     const updated = { ...complex, ...patch };
@@ -1052,6 +1067,21 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
     const body = encodeURIComponent(buildComplexShareText(complex));
     return `mailto:${customerEmail}?subject=${subject}&body=${body}`;
   };
+  const getOwnerBulkWhatsappHref = (complex: Complex) => {
+    const phone = normalizePhone(complex.ownerPhone ?? '');
+    const text = encodeURIComponent(bulkOwnerMessage.trim() || 'שלום, רציתי לבדוק זמינות.');
+    return `https://wa.me/${phone}?text=${text}`;
+  };
+  const toggleOwnerSelection = (complexId: string) => {
+    setSelectedOwnerIds(current =>
+      current.includes(complexId)
+        ? current.filter(id => id !== complexId)
+        : [...current, complexId]
+    );
+  };
+  const selectAllOwners = () => {
+    setSelectedOwnerIds(ownerTargets.map(complex => complex.id));
+  };
 
   return (
     <div className="grid">
@@ -1090,6 +1120,42 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
           <Field label="מספר לקוח לשליחה" value={customerPhone} onChange={setCustomerPhone} placeholder="05..." />
           <Field label="אימייל לקוח לשליחה" value={customerEmail} onChange={setCustomerEmail} placeholder="name@example.com" />
         </div>
+
+        <div className="bulk-owner-panel">
+          <div className="item-head">
+            <div>
+              <h3 className="section-title">שליחה מרובה לבעלי מתחמים</h3>
+              <p className="muted">סמני מתחמים מהרשימה, כתבי הודעה אחת, ואז פתחי WhatsApp לכל בעל מתחם מסומן.</p>
+            </div>
+            <span className="pill available">{selectedOwnerTargets.length}/{ownerTargets.length} נבחרו</span>
+          </div>
+          <label className="field">
+            <span className="label">הודעה לבעלי המתחמים</span>
+            <textarea
+              className="input"
+              rows={3}
+              value={bulkOwnerMessage}
+              onChange={event => setBulkOwnerMessage(event.target.value)}
+            />
+          </label>
+          <div className="actions">
+            <button className="secondary-btn" type="button" onClick={selectAllOwners} disabled={ownerTargets.length === 0}>
+              סמן בעלי טלפון
+            </button>
+            <button className="ghost-btn" type="button" onClick={() => setSelectedOwnerIds([])} disabled={selectedOwnerIds.length === 0}>
+              נקה בחירה
+            </button>
+          </div>
+          {selectedOwnerTargets.length > 0 && (
+            <div className="bulk-owner-links">
+              {selectedOwnerTargets.map(complex => (
+                <a className="primary-btn" href={getOwnerBulkWhatsappHref(complex)} target="_blank" rel="noreferrer" key={`owner-send-${complex.id}`}>
+                  <MessageCircle size={16} /> {complex.ownerName || complex.name}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="catalog-grid">
@@ -1120,7 +1186,19 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
                 <h2 className="section-title">{complex.name}</h2>
                 <p className="muted">{complex.city} · {complex.area} · {complex.rooms} חדרים · עד {complex.maxGuests} אורחים</p>
               </div>
-              {complex.videoUrl && <a className="ghost-btn icon-only" href={complex.videoUrl} target="_blank" rel="noreferrer" title="פתיחת וידאו"><Video size={18} /></a>}
+              <div className="actions">
+                {complex.ownerPhone && (
+                  <label className="owner-select">
+                    <input
+                      type="checkbox"
+                      checked={selectedOwnerIds.includes(complex.id)}
+                      onChange={() => toggleOwnerSelection(complex.id)}
+                    />
+                    <span>בחר לשליחה</span>
+                  </label>
+                )}
+                {complex.videoUrl && <a className="ghost-btn icon-only" href={complex.videoUrl} target="_blank" rel="noreferrer" title="פתיחת וידאו"><Video size={18} /></a>}
+              </div>
             </div>
 
             <div className="form-grid">
