@@ -44,7 +44,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.18.8';
+const APP_VERSION = '2026.06.18.9';
 
 type ParsedStayImport = {
   id: string;
@@ -104,9 +104,19 @@ function dateFromYMD(value: string): Date {
   return new Date(`${value}T12:00:00`);
 }
 
+function isValidYMD(value?: string): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  return !Number.isNaN(dateFromYMD(value).getTime());
+}
+
 function getStayEvents(state: AppState): StayEvent[] {
   return state.availabilityBlocks
-    .filter(block => block.status !== 'available' && Boolean(block.customerName || block.customerPhone || block.leadId))
+    .filter(block =>
+      block.status !== 'available' &&
+      Boolean(block.customerName || block.customerPhone || block.leadId) &&
+      isValidYMD(block.startDate) &&
+      isValidYMD(block.endDate)
+    )
     .flatMap(block => {
       const complex = state.complexes.find(item => item.id === block.complexId);
       const customerName = block.customerName || 'לקוח ללא שם';
@@ -1280,9 +1290,15 @@ function StaysView({ state }: { state: AppState }) {
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
   const today = todayYMD();
-  const allEvents = useMemo(() => getStayEvents(state), [state]);
+  const allEvents = useMemo(() => getStayEvents(state), [state.availabilityBlocks, state.complexes]);
   const upcomingEvents = allEvents.filter(event => event.date >= today).slice(0, 40);
   const reminders = allEvents.filter(event => event.date === today || event.reminderDate === today);
+  const eventsByDate = useMemo(() => {
+    return allEvents.reduce<Record<string, StayEvent[]>>((groups, event) => {
+      (groups[event.date] ??= []).push(event);
+      return groups;
+    }, {});
+  }, [allEvents]);
   const grid = getMonthGrid(year, month);
 
   useEffect(() => {
@@ -1370,7 +1386,7 @@ function StaysView({ state }: { state: AppState }) {
                 {week.map((day, dayIndex) => {
                   if (!day) return <span key={dayIndex} />;
                   const dateStr = toYMD(day);
-                  const dayEvents = allEvents.filter(event => event.date === dateStr);
+                  const dayEvents = eventsByDate[dateStr] ?? [];
                   return (
                     <div className={`day stay-day ${dayEvents.length ? 'has-stays' : ''}`} key={dateStr}>
                       <span>{day.getDate()}</span>
