@@ -47,7 +47,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.18.11';
+const APP_VERSION = '2026.06.18.12';
 
 type ParsedStayImport = {
   id: string;
@@ -146,6 +146,7 @@ function isValidYMD(value?: string): value is string {
 
 function getParshaLabel(shabbatDate?: string): string | undefined {
   if (!shabbatDate) return undefined;
+  if (shabbatDate < todayYMD()) return undefined;
   return parshaByShabbatDate[shabbatDate];
 }
 
