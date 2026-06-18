@@ -46,7 +46,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.18.10';
+const APP_VERSION = '2026.06.18.11';
 
 type ParsedStayImport = {
   id: string;
@@ -94,6 +94,38 @@ const leadStatusLabels: Record<LeadStatus, string> = {
   irrelevant: 'לא רלוונטי',
 };
 
+const parshaByShabbatDate: Record<string, string> = {
+  '2026-06-20': 'פרשת קורח',
+  '2026-06-27': 'פרשת חוקת',
+  '2026-07-04': 'פרשת בלק',
+  '2026-07-11': 'פרשת פינחס',
+  '2026-07-18': 'פרשת מטות-מסעי',
+  '2026-07-25': 'פרשת דברים',
+  '2026-08-01': 'פרשת ואתחנן',
+  '2026-08-08': 'פרשת עקב',
+  '2026-08-15': 'פרשת ראה',
+  '2026-08-22': 'פרשת שופטים',
+  '2026-08-29': 'פרשת כי תצא',
+  '2026-09-05': 'פרשת כי תבוא',
+  '2026-09-12': 'ראש השנה',
+  '2026-09-19': 'פרשת וילך',
+  '2026-09-26': 'שבת שובה / פרשת האזינו',
+  '2026-10-03': 'חג סוכות',
+  '2026-10-10': 'שמיני עצרת / שמחת תורה',
+  '2026-10-17': 'פרשת בראשית',
+  '2026-10-24': 'פרשת נח',
+  '2026-10-31': 'פרשת לך לך',
+  '2026-11-07': 'פרשת וירא',
+  '2026-11-14': 'פרשת חיי שרה',
+  '2026-11-21': 'פרשת תולדות',
+  '2026-11-28': 'פרשת ויצא',
+  '2026-12-05': 'פרשת וישלח',
+  '2026-12-12': 'פרשת וישב',
+  '2026-12-19': 'פרשת מקץ',
+  '2026-12-26': 'פרשת ויגש',
+  '2027-01-02': 'פרשת ויחי',
+};
+
 function byDate<T extends { startDate: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => a.startDate.localeCompare(b.startDate));
 }
@@ -109,6 +141,11 @@ function dateFromYMD(value: string): Date {
 function isValidYMD(value?: string): value is string {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   return !Number.isNaN(dateFromYMD(value).getTime());
+}
+
+function getParshaLabel(shabbatDate?: string): string | undefined {
+  if (!shabbatDate) return undefined;
+  return parshaByShabbatDate[shabbatDate];
 }
 
 function getStayEvents(state: AppState): StayEvent[] {
@@ -531,6 +568,7 @@ function App() {
 
   const totalComplexes = state.complexes.filter(complex => complex.active).length;
   const nextShabbatRange = getUpcomingShabbatRanges(1)[0];
+  const nextShabbatParsha = getParshaLabel(nextShabbatRange?.labelDate);
   const nextShabbatAvailable = useMemo(
     () => nextShabbatRange ? findAvailableComplexes(state, nextShabbatRange.startDate, nextShabbatRange.endDate).length : 0,
     [nextShabbatRange, state],
@@ -584,6 +622,7 @@ function App() {
             totalComplexes={totalComplexes}
             nextShabbatAvailable={nextShabbatAvailable}
             nextShabbatLabel={nextShabbatRange?.labelDate}
+            nextShabbatParsha={nextShabbatParsha}
             openLeads={openLeads.length}
             openTasks={openTasks.length}
             upcomingAvailableCount={upcomingAvailableShabbats.length}
@@ -1149,6 +1188,7 @@ function Dashboard({
   totalComplexes,
   nextShabbatAvailable,
   nextShabbatLabel,
+  nextShabbatParsha,
   openLeads,
   openTasks,
   upcomingAvailableCount,
@@ -1160,6 +1200,7 @@ function Dashboard({
   totalComplexes: number;
   nextShabbatAvailable: number;
   nextShabbatLabel?: string;
+  nextShabbatParsha?: string;
   openLeads: number;
   openTasks: number;
   upcomingAvailableCount: number;
@@ -1173,6 +1214,11 @@ function Dashboard({
   syncStatus: string;
   connected: boolean;
 }) {
+  const nextShabbatDetail = [
+    nextShabbatLabel ? formatDateLine(nextShabbatLabel) : undefined,
+    nextShabbatParsha,
+  ].filter(Boolean).join(' · ');
+
   return (
     <div className="grid">
       <section className="hero-panel">
@@ -1192,7 +1238,7 @@ function Dashboard({
 
       <section className="grid dashboard-grid">
         <Metric label="סה״כ מתחמים" value={totalComplexes} icon={<Home size={18} />} />
-        <Metric label="פנויים לשבת הקרובה" value={nextShabbatAvailable} icon={<CalendarDays size={18} />} detail={nextShabbatLabel ? formatDateLine(nextShabbatLabel) : undefined} />
+        <Metric label="פנויים לשבת הקרובה" value={nextShabbatAvailable} icon={<CalendarDays size={18} />} detail={nextShabbatDetail || undefined} />
         <Metric label="פניות פתוחות" value={openLeads} icon={<Users size={18} />} />
         <Metric label="משימות" value={openTasks} icon={<ListChecks size={18} />} />
       </section>
