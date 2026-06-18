@@ -1597,6 +1597,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     invoiceSent: false,
     note: '',
   });
+  const [closeFormError, setCloseFormError] = useState('');
   const [notificationStatus, setNotificationStatus] = useState(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
@@ -1653,8 +1654,19 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   };
 
   const saveCloseBlock = async () => {
-    if (!closeForm.complexId || !closeForm.startDate || !closeForm.endDate || closeForm.endDate <= closeForm.startDate || isPastDate(closeForm.startDate)) return;
-
+    setCloseFormError('');
+    if (!closeForm.complexId) {
+      setCloseFormError('צריך לבחור מתחם.');
+      return;
+    }
+    if (!closeForm.startDate || !closeForm.endDate) {
+      setCloseFormError('צריך למלא תאריך כניסה ותאריך יציאה.');
+      return;
+    }
+    if (closeForm.endDate <= closeForm.startDate) {
+      setCloseFormError('תאריך היציאה חייב להיות אחרי תאריך הכניסה.');
+      return;
+    }
     const blockData = {
       complexId: closeForm.complexId,
       startDate: closeForm.startDate,
@@ -1669,8 +1681,14 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     };
 
     if (session) {
-      const block = await insertCloudAvailability(session, blockData);
-      persist({ ...state, availabilityBlocks: [...state.availabilityBlocks, block] });
+      try {
+        const block = await insertCloudAvailability(session, blockData);
+        persist({ ...state, availabilityBlocks: [...state.availabilityBlocks, block] });
+      } catch {
+        persist(createAvailabilityBlock(state, blockData));
+        setCloseFormError('נשמר מקומית, אבל לא בענן. כנראה צריך להריץ את עדכון הסכמה ב-Supabase.');
+        return;
+      }
     } else {
       persist(createAvailabilityBlock(state, blockData));
     }
@@ -1734,7 +1752,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
             <DateField
               label="כניסה"
               value={closeForm.startDate}
-              min={todayYMD()}
+              min=""
               onChange={value => setCloseForm(current => ({
                 ...current,
                 startDate: value,
@@ -1744,7 +1762,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
             <DateField
               label="יציאה"
               value={closeForm.endDate}
-              min={closeForm.startDate || todayYMD()}
+              min={closeForm.startDate}
               onChange={value => setCloseForm(current => ({ ...current, endDate: value }))}
             />
             <Field label="שם לקוח" value={closeForm.customerName} onChange={value => setCloseForm(current => ({ ...current, customerName: value }))} />
@@ -1767,6 +1785,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
               <span>נשלחה חשבונית</span>
             </label>
             <Field className="full" label="הערה" value={closeForm.note} onChange={value => setCloseForm(current => ({ ...current, note: value }))} />
+            {closeFormError && <p className="form-error full">{closeFormError}</p>}
             <div className="actions full">
               <button className="primary-btn" type="button" onClick={saveCloseBlock}>שמור סגירה</button>
               <button className="ghost-btn" type="button" onClick={() => setShowCloseForm(false)}>ביטול</button>
