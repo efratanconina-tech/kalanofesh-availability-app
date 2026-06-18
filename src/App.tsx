@@ -95,6 +95,9 @@ const leadStatusLabels: Record<LeadStatus, string> = {
   irrelevant: 'לא רלוונטי',
 };
 
+const areaOptions = ['צפון', 'מרכז', 'ירושלים והסביבה', 'דרום'];
+const areaPreferenceOptions = ['לא משנה', ...areaOptions];
+
 const parshaByShabbatDate: Record<string, string> = {
   '2026-06-20': 'פרשת קורח',
   '2026-06-27': 'פרשת חוקת',
@@ -957,7 +960,8 @@ function AssistantView({
 }
 
 function CatalogView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
-  const areas = ['הכל', ...Array.from(new Set(state.complexes.map(complex => complex.area)))];
+  const complexAreaOptions = Array.from(new Set([...areaOptions, ...state.complexes.map(complex => complex.area).filter(Boolean)]));
+  const areas = ['הכל', ...complexAreaOptions];
   const [area, setArea] = useState(areas[0] ?? 'הכל');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -1013,7 +1017,7 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
     const complex: Complex = {
       id: createSlug(newComplexForm.name, state.complexes.map(item => item.id)),
       name: newComplexForm.name.trim(),
-      area: newComplexForm.area.trim() || 'לא מוגדר',
+      area: newComplexForm.area || areaOptions[0],
       city: newComplexForm.city.trim() || 'לא ידוע',
       rooms: Number(newComplexForm.rooms || 0),
       maxGuests: Number(newComplexForm.maxGuests || 0),
@@ -1117,7 +1121,7 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
         {showNewComplex && (
           <div className="form-grid" style={{ marginTop: 12 }}>
             <Field label="שם מתחם" value={newComplexForm.name} onChange={value => setNewComplexForm(current => ({ ...current, name: value }))} />
-            <Field label="אזור" value={newComplexForm.area} onChange={value => setNewComplexForm(current => ({ ...current, area: value }))} />
+            <SelectField label="אזור" value={newComplexForm.area} options={complexAreaOptions} onChange={value => setNewComplexForm(current => ({ ...current, area: value }))} />
             <Field label="עיר" value={newComplexForm.city} onChange={value => setNewComplexForm(current => ({ ...current, city: value }))} />
             <Field label="חדרים" value={newComplexForm.rooms} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, rooms: value }))} />
             <Field label="מקסימום אורחים" value={newComplexForm.maxGuests} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, maxGuests: value }))} />
@@ -1219,7 +1223,7 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
 
             <div className="form-grid">
               <Field label="שם מתחם" value={complex.name} onChange={value => updateComplex(complex, { name: value })} />
-              <Field label="אזור" value={complex.area} onChange={value => updateComplex(complex, { area: value })} />
+              <SelectField label="אזור" value={complex.area} options={complexAreaOptions.includes(complex.area) ? complexAreaOptions : [complex.area, ...complexAreaOptions]} onChange={value => updateComplex(complex, { area: value })} />
               <Field label="עיר" value={complex.city} onChange={value => updateComplex(complex, { city: value })} />
               <Field label="חדרים" value={String(complex.rooms)} type="number" min="0" onChange={value => updateComplex(complex, { rooms: Number(value || 0) })} />
               <Field label="מקסימום אורחים" value={String(complex.maxGuests)} type="number" min="0" onChange={value => updateComplex(complex, { maxGuests: Number(value || 0) })} />
@@ -1470,7 +1474,7 @@ function QuickLookup({ state, persist, session }: { state: AppState; persist: (s
           <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate <= value ? '' : form.endDate })} />
           <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
           <Field label="אורחים" value={form.guests} type="number" min="1" onChange={value => setForm({ ...form, guests: value })} />
-          <SelectField label="אזור" value={form.area} options={['לא משנה', 'צפון', 'מרכז', 'ירושלים והסביבה', 'דרום']} onChange={value => setForm({ ...form, area: value })} />
+          <SelectField label="אזור" value={form.area} options={areaPreferenceOptions} onChange={value => setForm({ ...form, area: value })} />
           <SelectField label="סוג נופש" value={form.vacationType} options={['שבת חתן', 'משפחה', 'זוגות', 'קבוצה', 'חג']} onChange={value => setForm({ ...form, vacationType: value })} />
           <Field label="שם לקוח" value={form.customerName} onChange={value => setForm({ ...form, customerName: value })} />
           <Field label="טלפון" value={form.customerPhone} onChange={value => setForm({ ...form, customerPhone: value })} />
