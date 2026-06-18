@@ -24,7 +24,7 @@ import {
   Users,
   Video,
 } from 'lucide-react';
-import type { AppState, AvailabilityStatus, Complex, Lead, LeadStatus } from './types';
+import type { AppState, AvailabilityBlock, AvailabilityStatus, Complex, Lead, LeadStatus } from './types';
 import { createAvailabilityBlock, createLead, createTask, hasDateConflict, loadState, saveState } from './lib/store';
 import { HEBREW_WEEKDAYS_SHORT, formatDateLine, formatGregorianDate, formatHebrewDate, getMonthGrid, isPastDate, toYMD, todayYMD } from './lib/dates';
 import {
@@ -39,6 +39,7 @@ import {
   insertCloudTask,
   isCloudConfigured,
   signIn,
+  updateCloudAvailability,
   updateCloudComplex,
   updateCloudLead,
   updateCloudTaskStatus,
@@ -1562,6 +1563,13 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   const today = todayYMD();
   const allEvents = useMemo(() => getStayEvents(state), [state.availabilityBlocks, state.complexes]);
   const upcomingArrivals = allEvents.filter(event => event.type === 'arrival' && event.date >= today).slice(0, 40);
+  const closureBlocks = useMemo(
+    () => state.availabilityBlocks
+      .filter(block => block.status !== 'available')
+      .sort((a, b) => b.startDate.localeCompare(a.startDate))
+      .slice(0, 80),
+    [state.availabilityBlocks],
+  );
   const reminders = allEvents.filter(event => event.date === today || event.reminderDate === today);
   const eventsByDate = useMemo(() => {
     return allEvents.reduce<Record<string, StayEvent[]>>((groups, event) => {
@@ -1635,6 +1643,26 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       note: '',
     }));
     setShowCloseForm(false);
+  };
+
+  const updateClosureBlock = async (block: AvailabilityBlock, patch: Partial<AvailabilityBlock>) => {
+    const updated = { ...block, ...patch, updatedAt: new Date().toISOString() };
+    persist({
+      ...state,
+      availabilityBlocks: state.availabilityBlocks.map(item => item.id === block.id ? updated : item),
+    });
+
+    if (session) {
+      try {
+        const cloudBlock = await updateCloudAvailability(session, block.id, patch);
+        persist({
+          ...state,
+          availabilityBlocks: state.availabilityBlocks.map(item => item.id === block.id ? cloudBlock : item),
+        });
+      } catch {
+        // Local update remains visible. If the cloud schema is missing columns, rerun supabase/schema.sql.
+      }
+    }
   };
 
   return (
@@ -1760,6 +1788,67 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="item-head">
+          <div>
+            <h2 className="section-title">רשימת סגירות</h2>
+            <p className="muted">כאן אפשר לעדכן סטטוס, עמלה, תשלום וחשבונית לסגירות קיימות.</p>
+          </div>
+          <span className="pill check">{closureBlocks.length} סגירות</span>
+        </div>
+        <div className="list" style={{ marginTop: 12 }}>
+          {closureBlocks.length === 0 && <p className="muted">אין סגירות להצגה.</p>}
+          {closureBlocks.map(block => {
+            const complex = state.complexes.find(item => item.id === block.complexId);
+
+            return (
+              <div className="list-item" key={block.id}>
+                <div className="item-head">
+                  <div>
+                    <p className="item-title">{block.customerName || 'סגירה ללא שם'}</p>
+                    <span className="muted">{complex?.name ?? 'מתחם'} · {formatDateLine(block.startDate, block.endDate)}</span>
+                  </div>
+                  <span className={`pill ${block.status}`}>{statusLabels[block.status]}</span>
+                </div>
+                {block.customerPhone && <span className="muted">{block.customerPhone}</span>}
+                {block.note && <span className="muted">{block.note}</span>}
+                <div className="form-grid">
+                  <SelectField
+                    label="סטטוס"
+                    value={block.status}
+                    options={['booked', 'tentative', 'offered', 'check', 'maintenance']}
+                    labels={statusLabels}
+                    onChange={value => updateClosureBlock(block, { status: value as AvailabilityStatus })}
+                  />
+                  <Field
+                    label="עמלה"
+                    value={block.commissionAmount ?? ''}
+                    onChange={value => updateClosureBlock(block, { commissionAmount: value })}
+                    placeholder="לדוגמה: 1,500"
+                  />
+                  <label className="owner-select">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(block.commissionPaid)}
+                      onChange={event => updateClosureBlock(block, { commissionPaid: event.target.checked })}
+                    />
+                    <span>שולם</span>
+                  </label>
+                  <label className="owner-select">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(block.invoiceSent)}
+                      onChange={event => updateClosureBlock(block, { invoiceSent: event.target.checked })}
+                    />
+                    <span>נשלחה חשבונית</span>
+                  </label>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </section>
     </div>

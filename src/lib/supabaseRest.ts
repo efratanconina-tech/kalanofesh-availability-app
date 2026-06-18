@@ -184,6 +184,19 @@ export async function updateCloudLead(session: CloudSession, lead: Lead): Promis
   return fromLeadRow(rows[0]);
 }
 
+export async function updateCloudAvailability(
+  session: CloudSession,
+  blockId: string,
+  patch: Partial<AvailabilityBlock>,
+): Promise<AvailabilityBlock> {
+  const rows = await request<AvailabilityBlockRow[]>(`/rest/v1/availability_blocks?id=eq.${blockId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(toAvailabilityPatchRow(patch)),
+  }, session);
+
+  return fromAvailabilityRow(rows[0]);
+}
+
 export async function updateCloudTaskStatus(session: CloudSession, taskId: string, status: 'open' | 'done'): Promise<void> {
   await request(`/rest/v1/tasks?id=eq.${taskId}`, {
     method: 'PATCH',
@@ -378,6 +391,22 @@ function toAvailabilityRow(data: Omit<AvailabilityBlock, 'id' | 'createdAt' | 'u
   if (data.commissionPaid) row.commission_paid = data.commissionPaid;
   if (data.invoiceSent) row.invoice_sent = data.invoiceSent;
 
+  return row;
+}
+
+function toAvailabilityPatchRow(data: Partial<AvailabilityBlock>) {
+  const row: Record<string, unknown> = {};
+  if (data.complexId !== undefined) row.complex_id = data.complexId;
+  if (data.startDate !== undefined) row.start_date = data.startDate;
+  if (data.endDate !== undefined) row.end_date = data.endDate;
+  if (data.status !== undefined) row.status = data.status;
+  if (data.leadId !== undefined) row.lead_id = data.leadId;
+  if (data.customerName !== undefined) row.customer_name = data.customerName;
+  if (data.customerPhone !== undefined) row.customer_phone = data.customerPhone;
+  if (data.commissionAmount !== undefined) row.commission_amount = data.commissionAmount || null;
+  if (data.commissionPaid !== undefined) row.commission_paid = data.commissionPaid;
+  if (data.invoiceSent !== undefined) row.invoice_sent = data.invoiceSent;
+  if (data.note !== undefined) row.note = data.note;
   return row;
 }
 
