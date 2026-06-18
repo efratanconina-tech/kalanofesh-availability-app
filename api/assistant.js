@@ -1,9 +1,21 @@
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const MAX_OUTPUT_TOKENS = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS || 600);
+const MAX_ITEMS_PER_TABLE = Number(process.env.OPENAI_MAX_ITEMS_PER_TABLE || 80);
+const MAX_MESSAGE_CHARS = Number(process.env.OPENAI_MAX_MESSAGE_CHARS || 4000);
+
+function limitItems(items) {
+  return (items || []).slice(0, MAX_ITEMS_PER_TABLE);
+}
+
+function limitText(value, maxLength = MAX_MESSAGE_CHARS) {
+  if (typeof value !== 'string') return '';
+  return value.length > maxLength ? `${value.slice(0, maxLength)}\n...[קוצר כדי לחסוך טוקנים]` : value;
+}
 
 function compactState(state) {
   return {
     today: new Date().toISOString().slice(0, 10),
-    complexes: (state?.complexes || [])
+    complexes: limitItems(state?.complexes)
       .filter(complex => complex.active !== false)
       .map(complex => ({
         id: complex.id,
@@ -14,7 +26,7 @@ function compactState(state) {
         maxGuests: complex.maxGuests,
         ownerPhone: complex.ownerPhone,
       })),
-    availabilityBlocks: (state?.availabilityBlocks || []).map(block => ({
+    availabilityBlocks: limitItems(state?.availabilityBlocks).map(block => ({
       complexId: block.complexId,
       startDate: block.startDate,
       endDate: block.endDate,
@@ -22,7 +34,7 @@ function compactState(state) {
       customerName: block.customerName,
       note: block.note,
     })),
-    leads: (state?.leads || []).map(lead => ({
+    leads: limitItems(state?.leads).map(lead => ({
       customerName: lead.customerName,
       startDate: lead.startDate,
       endDate: lead.endDate,
@@ -32,7 +44,7 @@ function compactState(state) {
       vacationType: lead.vacationType,
       status: lead.status,
     })),
-    tasks: (state?.tasks || []).map(task => ({
+    tasks: limitItems(state?.tasks).map(task => ({
       title: task.title,
       dueDate: task.dueDate,
       status: task.status,
@@ -85,13 +97,14 @@ export default async function handler(request, response) {
     body: JSON.stringify({
       model: MODEL,
       instructions,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
       input: [
         {
           role: 'user',
           content: [
             {
               type: 'input_text',
-              text: `נתוני האפליקציה:\n${JSON.stringify(compactState(state), null, 2)}\n\nבקשת המשתמשת:\n${message}`,
+              text: `נתוני האפליקציה:\n${JSON.stringify(compactState(state), null, 2)}\n\nבקשת המשתמשת:\n${limitText(message)}`,
             },
           ],
         },
@@ -101,6 +114,10 @@ export default async function handler(request, response) {
 
   if (!openaiResponse.ok) {
     const errorText = await openaiResponse.text();
+    if (openaiResponse.status === 429 || errorText.includes('insufficient_quota')) {
+      response.status(402).json({ error: 'OpenAI quota or budget limit reached' });
+      return;
+    }
     response.status(502).json({ error: errorText || 'OpenAI request failed' });
     return;
   }

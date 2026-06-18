@@ -467,6 +467,9 @@ async function askGptAssistant(message: string, state: AppState): Promise<string
     if (response.status === 501) {
       return 'GPT עדיין לא מחובר. צריך להוסיף ב-Vercel משתנה סביבה בשם OPENAI_API_KEY ואז לעשות Redeploy.';
     }
+    if (response.status === 402 || response.status === 429) {
+      return 'הגעת למגבלת הקרדיט/תקציב של OpenAI API. צריך לבדוק Billing ו-Usage Limits בחשבון OpenAI Platform.';
+    }
     throw new Error(await response.text());
   }
 

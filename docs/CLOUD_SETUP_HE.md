@@ -55,6 +55,10 @@
 VITE_SUPABASE_URL=<Project URL from Supabase>
 VITE_SUPABASE_ANON_KEY=<anon/public or publishable key from Supabase>
 OPENAI_API_KEY=<OpenAI API key, optional for GPT chat>
+OPENAI_MODEL=gpt-4.1-mini
+OPENAI_MAX_OUTPUT_TOKENS=600
+OPENAI_MAX_ITEMS_PER_TABLE=80
+OPENAI_MAX_MESSAGE_CHARS=4000
 ```
 
 חשוב:
@@ -62,6 +66,8 @@ OPENAI_API_KEY=<OpenAI API key, optional for GPT chat>
 - לבחור Production לפחות.
 - מומלץ לבחור גם Preview ו-Development אם Vercel מציע.
 - אחרי שינוי משתנים חייבים Redeploy.
+- ChatGPT Plus/Pro אינו אותו תקציב כמו OpenAI API. הצ׳אט באפליקציה משתמש בקרדיט/חיוב של חשבון OpenAI Platform שאליו שייך `OPENAI_API_KEY`.
+- כדי שלא יעבור תקציב, להגדיר ב-OpenAI Platform מגבלת Usage/Budget לפרויקט של המפתח. המשתנים למעלה גם מצמצמים את כמות הטוקנים בכל קריאה.
 
 ## 5. Vercel - Redeploy
 
@@ -99,4 +105,3 @@ efratanconina-tech/kalanofesh-availability-app
 - אחד ממשתני Vercel חסר או שגוי.
 - לא נעשה Redeploy אחרי הוספת המשתנים.
 - המשתמש לא confirmed.
-
