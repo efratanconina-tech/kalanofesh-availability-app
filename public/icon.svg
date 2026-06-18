@@ -1,21 +1,42 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="קלנופש">
   <defs>
-    <linearGradient id="bg" x1="84" y1="40" x2="428" y2="472" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1f2937"/>
-      <stop offset="1" stop-color="#0b1120"/>
+    <linearGradient id="sky" x1="88" y1="36" x2="424" y2="476" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#152238"/>
+      <stop offset="0.48" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#070b16"/>
     </linearGradient>
-    <linearGradient id="gold" x1="128" y1="72" x2="384" y2="430" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#f3d991"/>
-      <stop offset="0.52" stop-color="#cda85b"/>
-      <stop offset="1" stop-color="#8f6a2f"/>
+    <linearGradient id="gold" x1="132" y1="90" x2="388" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffe7a3"/>
+      <stop offset="0.45" stop-color="#cda85b"/>
+      <stop offset="1" stop-color="#8b6428"/>
     </linearGradient>
+    <linearGradient id="warm" x1="160" y1="180" x2="352" y2="396" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff7df"/>
+      <stop offset="1" stop-color="#d7b86a"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity="0.38"/>
+    </filter>
   </defs>
-  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
-  <path d="M138 355V202c0-55 45-100 100-100h40c55 0 100 45 100 100v153" fill="none" stroke="url(#gold)" stroke-width="30" stroke-linecap="round"/>
-  <path d="M112 373h288" stroke="url(#gold)" stroke-width="28" stroke-linecap="round"/>
-  <path d="M176 152 256 92l80 60" fill="none" stroke="#f3d991" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="357" cy="137" r="13" fill="#f3d991"/>
-  <text x="256" y="302" text-anchor="middle" direction="rtl" unicode-bidi="bidi-override"
-        font-family="Arial, 'Noto Sans Hebrew', sans-serif" font-size="132" font-weight="900"
-        fill="#fffaf0">קל</text>
+
+  <rect width="512" height="512" rx="118" fill="url(#sky)"/>
+  <path d="M62 383c57-42 105-56 151-42 29 9 54 30 87 34 42 5 84-17 150-70v117H62z" fill="#111c2f"/>
+  <path d="M72 407c74-31 142-32 204-4 52 24 96 25 164-13" fill="none" stroke="#2b3b58" stroke-width="20" stroke-linecap="round"/>
+
+  <circle cx="371" cy="136" r="38" fill="url(#gold)"/>
+  <path d="M371 70v22M371 180v22M305 136h22M415 136h22M324 89l16 16M402 167l16 16M418 89l-16 16M340 167l-16 16"
+        stroke="#ffe7a3" stroke-width="12" stroke-linecap="round"/>
+
+  <g filter="url(#shadow)">
+    <path d="M121 251 256 140l135 111" fill="none" stroke="url(#gold)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M155 246h202v145a30 30 0 0 1-30 30H185a30 30 0 0 1-30-30z" fill="#fffaf0"/>
+    <path d="M155 246h202v40H155z" fill="url(#warm)"/>
+    <path d="M212 421V309a44 44 0 0 1 88 0v112z" fill="#0f172a"/>
+    <circle cx="284" cy="360" r="7" fill="#f3d991"/>
+    <path d="M176 315h44v44h-44zM292 315h44v44h-44z" fill="#d7b86a"/>
+    <path d="M190 315v44M176 337h44M306 315v44M292 337h44" stroke="#fff7df" stroke-width="7" stroke-linecap="round"/>
+  </g>
+
+  <path d="M205 450c22-28 34-47 51-47s29 19 51 47" fill="none" stroke="url(#gold)" stroke-width="18" stroke-linecap="round"/>
+  <path d="M166 445h180" stroke="#fff1bd" stroke-width="12" stroke-linecap="round" opacity="0.9"/>
 </svg>
