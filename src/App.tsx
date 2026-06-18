@@ -2202,6 +2202,9 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
 
 function TasksView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
   const [title, setTitle] = useState('');
+  const [showDoneTasks, setShowDoneTasks] = useState(false);
+  const openTasks = state.tasks.filter(task => task.status === 'open');
+  const doneTasks = state.tasks.filter(task => task.status === 'done');
 
   const addTask = async () => {
     if (!title.trim()) return;
@@ -2234,20 +2237,50 @@ function TasksView({ state, persist, session }: { state: AppState; persist: (sta
       </section>
 
       <section className="card">
-        <h2 className="section-title">משימות פתוחות</h2>
+        <div className="item-head">
+          <h2 className="section-title">משימות פתוחות</h2>
+          <span className="pill check">{openTasks.length} פתוחות</span>
+        </div>
         <div className="list">
-          {state.tasks.filter(task => task.status === 'open').map(task => (
+          {openTasks.length === 0 && <p className="muted">אין משימות פתוחות.</p>}
+          {openTasks.map(task => (
             <div className="list-item" key={task.id}>
               <div className="item-head">
                 <p className="item-title">{task.title}</p>
                 <button className="ghost-btn" type="button" onClick={() => closeTask(task.id)}>
-                  <CheckCircle2 size={16} /> סגור
+                  <CheckCircle2 size={16} /> בוצע
                 </button>
               </div>
               <span className="muted">לתאריך: {formatGregorianDate(task.dueDate)}</span>
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="card">
+        <div className="item-head">
+          <div>
+            <h2 className="section-title">משימות שבוצעו</h2>
+            <p className="muted">הן יורדות מהרשימה הראשית ונשמרות כאן לבדיקה מאוחרת.</p>
+          </div>
+          <button className="secondary-btn" type="button" onClick={() => setShowDoneTasks(current => !current)}>
+            {showDoneTasks ? 'הסתר' : 'הצג'} ({doneTasks.length})
+          </button>
+        </div>
+        {showDoneTasks && (
+          <div className="list" style={{ marginTop: 12 }}>
+            {doneTasks.length === 0 && <p className="muted">עוד אין משימות שבוצעו.</p>}
+            {doneTasks.map(task => (
+              <div className="list-item" key={task.id}>
+                <div className="item-head">
+                  <p className="item-title">{task.title}</p>
+                  <span className="pill available">בוצע</span>
+                </div>
+                <span className="muted">לתאריך: {formatGregorianDate(task.dueDate)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );
