@@ -1598,6 +1598,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     note: '',
   });
   const [closeFormError, setCloseFormError] = useState('');
+  const [closeFormTouched, setCloseFormTouched] = useState(false);
   const [notificationStatus, setNotificationStatus] = useState(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
@@ -1620,6 +1621,18 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       return groups;
     }, {});
   }, [allEvents]);
+  const closeFormValidation = useMemo(() => {
+    const errors: Record<string, string> = {};
+    if (!activeComplexes.length) errors.complexId = 'אין מתחמים פעילים לשמירה.';
+    if (!closeForm.complexId) errors.complexId = 'צריך לבחור מתחם.';
+    if (!closeForm.startDate) errors.startDate = 'צריך למלא תאריך כניסה.';
+    if (!closeForm.endDate) errors.endDate = 'צריך למלא תאריך יציאה.';
+    if (closeForm.startDate && closeForm.endDate && closeForm.endDate <= closeForm.startDate) {
+      errors.endDate = 'תאריך היציאה חייב להיות אחרי תאריך הכניסה.';
+    }
+    return errors;
+  }, [activeComplexes.length, closeForm.complexId, closeForm.endDate, closeForm.startDate]);
+  const showCloseFormErrors = closeFormTouched || Boolean(closeFormError);
   const grid = getMonthGrid(year, month);
 
   useEffect(() => {
@@ -1655,16 +1668,9 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
 
   const saveCloseBlock = async () => {
     setCloseFormError('');
-    if (!closeForm.complexId) {
-      setCloseFormError('צריך לבחור מתחם.');
-      return;
-    }
-    if (!closeForm.startDate || !closeForm.endDate) {
-      setCloseFormError('צריך למלא תאריך כניסה ותאריך יציאה.');
-      return;
-    }
-    if (closeForm.endDate <= closeForm.startDate) {
-      setCloseFormError('תאריך היציאה חייב להיות אחרי תאריך הכניסה.');
+    setCloseFormTouched(true);
+    if (Object.keys(closeFormValidation).length > 0) {
+      setCloseFormError('יש שדות שצריך לתקן לפני שמירת הסגירה.');
       return;
     }
     const blockData = {
@@ -1702,6 +1708,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       invoiceSent: false,
       note: '',
     }));
+    setCloseFormTouched(false);
     setShowCloseForm(false);
   };
 
@@ -1748,6 +1755,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
               options={activeComplexes.map(complex => complex.id)}
               labels={Object.fromEntries(activeComplexes.map(complex => [complex.id, complex.name]))}
               onChange={value => setCloseForm(current => ({ ...current, complexId: value }))}
+              error={showCloseFormErrors ? closeFormValidation.complexId : undefined}
             />
             <DateField
               label="כניסה"
@@ -1758,12 +1766,14 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                 startDate: value,
                 endDate: current.endDate <= value ? '' : current.endDate,
               }))}
+              error={showCloseFormErrors ? closeFormValidation.startDate : undefined}
             />
             <DateField
               label="יציאה"
               value={closeForm.endDate}
               min={closeForm.startDate}
               onChange={value => setCloseForm(current => ({ ...current, endDate: value }))}
+              error={showCloseFormErrors ? closeFormValidation.endDate : undefined}
             />
             <Field label="שם לקוח" value={closeForm.customerName} onChange={value => setCloseForm(current => ({ ...current, customerName: value }))} />
             <Field label="טלפון" value={closeForm.customerPhone} onChange={value => setCloseForm(current => ({ ...current, customerPhone: value }))} />
@@ -2544,6 +2554,7 @@ function Field({
   min,
   placeholder,
   className = '',
+  error,
 }: {
   label: string;
   value: string;
@@ -2552,21 +2563,24 @@ function Field({
   min?: string;
   placeholder?: string;
   className?: string;
+  error?: string;
 }) {
   return (
     <label className={`field ${className}`}>
       <span className="label">{label}</span>
-      <input className="input" value={value} type={type} min={min} placeholder={placeholder} onChange={event => onChange(event.target.value)} />
+      <input className={`input ${error ? 'input-error' : ''}`} value={value} type={type} min={min} placeholder={placeholder} onChange={event => onChange(event.target.value)} />
+      {error && <span className="field-error">{error}</span>}
     </label>
   );
 }
 
-function DateField({ label, value, min, onChange }: { label: string; value: string; min: string; onChange: (value: string) => void }) {
+function DateField({ label, value, min, onChange, error }: { label: string; value: string; min?: string; onChange: (value: string) => void; error?: string }) {
   return (
     <label className="field">
       <span className="label">{label}</span>
-      <input className="input" type="date" value={value} min={min} onChange={event => onChange(event.target.value)} />
+      <input className={`input ${error ? 'input-error' : ''}`} type="date" value={value} min={min} onChange={event => onChange(event.target.value)} />
       {value && <span className="muted">{formatHebrewDate(value)}</span>}
+      {error && <span className="field-error">{error}</span>}
     </label>
   );
 }
@@ -2577,19 +2591,22 @@ function SelectField({
   options,
   labels,
   onChange,
+  error,
 }: {
   label: string;
   value: string;
   options: string[];
   labels?: Record<string, string>;
   onChange: (value: string) => void;
+  error?: string;
 }) {
   return (
     <label className="field">
       <span className="label">{label}</span>
-      <select className="input" value={value} onChange={event => onChange(event.target.value)}>
+      <select className={`input ${error ? 'input-error' : ''}`} value={value} onChange={event => onChange(event.target.value)}>
         {options.map(option => <option key={option} value={option}>{labels?.[option] ?? option}</option>)}
       </select>
+      {error && <span className="field-error">{error}</span>}
     </label>
   );
 }
