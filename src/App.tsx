@@ -5,6 +5,7 @@ import {
   CalendarCheck,
   CalendarDays,
   CalendarX,
+  ChevronDown,
   CheckCircle2,
   Cloud,
   ClipboardList,
@@ -995,6 +996,7 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [selectedOwnerIds, setSelectedOwnerIds] = useState<string[]>([]);
+  const [expandedComplexIds, setExpandedComplexIds] = useState<string[]>([]);
   const [bulkOwnerMessage, setBulkOwnerMessage] = useState('שלום, רציתי לבדוק זמינות ומחיר לתאריך הקרוב.');
   const [showNewComplex, setShowNewComplex] = useState(false);
   const [newComplexForm, setNewComplexForm] = useState({
@@ -1128,6 +1130,13 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
         : [...current, complexId]
     );
   };
+  const toggleComplexDetails = (complexId: string) => {
+    setExpandedComplexIds(current =>
+      current.includes(complexId)
+        ? current.filter(id => id !== complexId)
+        : [...current, complexId]
+    );
+  };
   const selectAllOwners = () => {
     setSelectedOwnerIds(ownerTargets.map(complex => complex.id));
   };
@@ -1210,26 +1219,10 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
       <section className="catalog-grid">
         {complexes.map(complex => {
           const galleryImages = splitGallery(complex.galleryUrls);
+          const isExpanded = expandedComplexIds.includes(complex.id);
 
           return (
-          <article className="card catalog-card" key={complex.id}>
-            {complex.coverImageUrl ? (
-              <img className="catalog-image" src={complex.coverImageUrl} alt={complex.name} />
-            ) : (
-              <div className="catalog-placeholder">
-                <Image size={28} />
-                <span>מקום לתמונה</span>
-              </div>
-            )}
-
-            {galleryImages.length > 0 && (
-              <div className="gallery-strip" aria-label={`גלריית תמונות ${complex.name}`}>
-                {galleryImages.slice(0, 6).map((imageUrl, index) => (
-                  <img src={imageUrl} alt={`${complex.name} תמונה ${index + 1}`} key={`${complex.id}-gallery-${index}`} />
-                ))}
-              </div>
-            )}
-
+          <article className={`card catalog-card ${isExpanded ? 'expanded' : 'collapsed'}`} key={complex.id}>
             <div className="item-head">
               <div>
                 <h2 className="section-title">{complex.name}</h2>
@@ -1247,62 +1240,93 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
                   </label>
                 )}
                 {complex.videoUrl && <a className="ghost-btn icon-only" href={complex.videoUrl} target="_blank" rel="noreferrer" title="פתיחת וידאו"><Video size={18} /></a>}
+                <button
+                  className="ghost-btn icon-only catalog-toggle"
+                  type="button"
+                  aria-expanded={isExpanded}
+                  aria-label={isExpanded ? `סגור פרטי ${complex.name}` : `פתח פרטי ${complex.name}`}
+                  title={isExpanded ? 'סגירת פרטים' : 'פתיחת פרטים'}
+                  onClick={() => toggleComplexDetails(complex.id)}
+                >
+                  <ChevronDown size={18} />
+                </button>
               </div>
             </div>
 
-            <div className="form-grid">
-              <Field label="שם מתחם" value={complex.name} onChange={value => updateComplex(complex, { name: value })} />
-              <SelectField label="אזור" value={complex.area} options={complexAreaOptions.includes(complex.area) ? complexAreaOptions : [complex.area, ...complexAreaOptions]} onChange={value => updateComplex(complex, { area: value })} />
-              <Field label="עיר" value={complex.city} onChange={value => updateComplex(complex, { city: value })} />
-              <Field label="חדרים" value={String(complex.rooms)} type="number" min="0" onChange={value => updateComplex(complex, { rooms: Number(value || 0) })} />
-              <Field label="מקסימום אורחים" value={String(complex.maxGuests)} type="number" min="0" onChange={value => updateComplex(complex, { maxGuests: Number(value || 0) })} />
-              <Field label="שם בעל מתחם" value={complex.ownerName ?? ''} onChange={value => updateComplex(complex, { ownerName: value })} />
-              <Field label="טלפון בעל מתחם" value={complex.ownerPhone ?? ''} onChange={value => updateComplex(complex, { ownerPhone: value })} />
-              <Field label="קישור תמונה" value={complex.coverImageUrl ?? ''} onChange={value => updateComplex(complex, { coverImageUrl: value })} />
-              <Field label="קישור וידאו" value={complex.videoUrl ?? ''} onChange={value => updateComplex(complex, { videoUrl: value })} />
-              <Field className="full" label="קישורי גלריה" value={complex.galleryUrls ?? ''} onChange={value => updateComplex(complex, { galleryUrls: value })} placeholder="אפשר להדביק כמה קישורים, כל קישור בשורה" />
-              <Field className="full" label="טקסט קצר ללקוח" value={complex.salesNote ?? ''} onChange={value => updateComplex(complex, { salesNote: value })} />
-              <Field className="full" label="הערות פנימיות" value={complex.internalNotes ?? ''} onChange={value => updateComplex(complex, { internalNotes: value })} />
-              <Field className="full" label="פרטי שבת" value={complex.shabbatNotes ?? ''} onChange={value => updateComplex(complex, { shabbatNotes: value })} />
-            </div>
+            {isExpanded && (
+              <div className="catalog-details">
+                {complex.coverImageUrl ? (
+                  <img className="catalog-image" src={complex.coverImageUrl} alt={complex.name} />
+                ) : (
+                  <div className="catalog-placeholder">
+                    <Image size={28} />
+                    <span>מקום לתמונה</span>
+                  </div>
+                )}
 
-            <div className="media-upload-row">
-              <label className="secondary-btn file-btn">
-                <Upload size={16} /> העלאת תמונת שער
-                <input type="file" accept="image/*" onChange={event => uploadCoverImage(complex, event)} />
-              </label>
-              <label className="ghost-btn file-btn">
-                <Image size={16} /> הוספה לגלריה
-                <input type="file" accept="image/*" multiple onChange={event => uploadGalleryImages(complex, event)} />
-              </label>
-              {complex.coverImageUrl && (
-                <button className="ghost-btn" type="button" onClick={() => updateComplex(complex, { coverImageUrl: undefined })}>
-                  נקה תמונת שער
-                </button>
-              )}
-              {galleryImages.length > 0 && (
-                <button className="ghost-btn" type="button" onClick={() => updateComplex(complex, { galleryUrls: undefined })}>
-                  נקה גלריה
-                </button>
-              )}
-            </div>
+                {galleryImages.length > 0 && (
+                  <div className="gallery-strip" aria-label={`גלריית תמונות ${complex.name}`}>
+                    {galleryImages.slice(0, 6).map((imageUrl, index) => (
+                      <img src={imageUrl} alt={`${complex.name} תמונה ${index + 1}`} key={`${complex.id}-gallery-${index}`} />
+                    ))}
+                  </div>
+                )}
 
-            <div className="catalog-preview">
-              <p className="muted">{complex.salesNote || complex.shabbatNotes || 'עדיין אין טקסט שיווקי. אפשר לכתוב כאן משפט מכירה קצר.'}</p>
-            </div>
+                <div className="form-grid">
+                  <Field label="שם מתחם" value={complex.name} onChange={value => updateComplex(complex, { name: value })} />
+                  <SelectField label="אזור" value={complex.area} options={complexAreaOptions.includes(complex.area) ? complexAreaOptions : [complex.area, ...complexAreaOptions]} onChange={value => updateComplex(complex, { area: value })} />
+                  <Field label="עיר" value={complex.city} onChange={value => updateComplex(complex, { city: value })} />
+                  <Field label="חדרים" value={String(complex.rooms)} type="number" min="0" onChange={value => updateComplex(complex, { rooms: Number(value || 0) })} />
+                  <Field label="מקסימום אורחים" value={String(complex.maxGuests)} type="number" min="0" onChange={value => updateComplex(complex, { maxGuests: Number(value || 0) })} />
+                  <Field label="שם בעל מתחם" value={complex.ownerName ?? ''} onChange={value => updateComplex(complex, { ownerName: value })} />
+                  <Field label="טלפון בעל מתחם" value={complex.ownerPhone ?? ''} onChange={value => updateComplex(complex, { ownerPhone: value })} />
+                  <Field label="קישור תמונה" value={complex.coverImageUrl ?? ''} onChange={value => updateComplex(complex, { coverImageUrl: value })} />
+                  <Field label="קישור וידאו" value={complex.videoUrl ?? ''} onChange={value => updateComplex(complex, { videoUrl: value })} />
+                  <Field className="full" label="קישורי גלריה" value={complex.galleryUrls ?? ''} onChange={value => updateComplex(complex, { galleryUrls: value })} placeholder="אפשר להדביק כמה קישורים, כל קישור בשורה" />
+                  <Field className="full" label="טקסט קצר ללקוח" value={complex.salesNote ?? ''} onChange={value => updateComplex(complex, { salesNote: value })} />
+                  <Field className="full" label="הערות פנימיות" value={complex.internalNotes ?? ''} onChange={value => updateComplex(complex, { internalNotes: value })} />
+                  <Field className="full" label="פרטי שבת" value={complex.shabbatNotes ?? ''} onChange={value => updateComplex(complex, { shabbatNotes: value })} />
+                </div>
 
-            <div className="actions">
-              <a className="primary-btn" href={getWhatsappHref(complex)} target="_blank" rel="noreferrer">
-                <Share2 size={16} /> שלח ללקוח
-              </a>
-              <a className="secondary-btn" href={getMailHref(complex)}>
-                שלח במייל
-              </a>
-              {complex.ownerPhone && <a className="secondary-btn" href={`tel:${complex.ownerPhone}`}>שיחה לבעל מתחם</a>}
-              <button className="ghost-btn danger-btn" type="button" onClick={() => deleteComplex(complex)}>
-                <Trash2 size={16} /> מחק מתחם
-              </button>
-            </div>
+                <div className="media-upload-row">
+                  <label className="secondary-btn file-btn">
+                    <Upload size={16} /> העלאת תמונת שער
+                    <input type="file" accept="image/*" onChange={event => uploadCoverImage(complex, event)} />
+                  </label>
+                  <label className="ghost-btn file-btn">
+                    <Image size={16} /> הוספה לגלריה
+                    <input type="file" accept="image/*" multiple onChange={event => uploadGalleryImages(complex, event)} />
+                  </label>
+                  {complex.coverImageUrl && (
+                    <button className="ghost-btn" type="button" onClick={() => updateComplex(complex, { coverImageUrl: undefined })}>
+                      נקה תמונת שער
+                    </button>
+                  )}
+                  {galleryImages.length > 0 && (
+                    <button className="ghost-btn" type="button" onClick={() => updateComplex(complex, { galleryUrls: undefined })}>
+                      נקה גלריה
+                    </button>
+                  )}
+                </div>
+
+                <div className="catalog-preview">
+                  <p className="muted">{complex.salesNote || complex.shabbatNotes || 'עדיין אין טקסט שיווקי. אפשר לכתוב כאן משפט מכירה קצר.'}</p>
+                </div>
+
+                <div className="actions">
+                  <a className="primary-btn" href={getWhatsappHref(complex)} target="_blank" rel="noreferrer">
+                    <Share2 size={16} /> שלח ללקוח
+                  </a>
+                  <a className="secondary-btn" href={getMailHref(complex)}>
+                    שלח במייל
+                  </a>
+                  {complex.ownerPhone && <a className="secondary-btn" href={`tel:${complex.ownerPhone}`}>שיחה לבעל מתחם</a>}
+                  <button className="ghost-btn danger-btn" type="button" onClick={() => deleteComplex(complex)}>
+                    <Trash2 size={16} /> מחק מתחם
+                  </button>
+                </div>
+              </div>
+            )}
           </article>
           );
         })}
