@@ -1150,29 +1150,12 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
             <p className="muted">כאן מרכזים לכל מתחם תמונה, וידאו, טלפון וטקסט קצר לשליחה.</p>
           </div>
           <div className="actions">
-            <button className="secondary-btn" type="button" onClick={() => setShowNewComplex(current => !current)}>
+            <button className="secondary-btn" type="button" onClick={() => setShowNewComplex(true)}>
               <Plus size={16} /> הוסף מתחם
             </button>
             <span className="pill available">{complexes.length} מתחמים</span>
           </div>
         </div>
-        {showNewComplex && (
-          <div className="form-grid" style={{ marginTop: 12 }}>
-            <Field label="שם מתחם" value={newComplexForm.name} onChange={value => setNewComplexForm(current => ({ ...current, name: value }))} />
-            <SelectField label="אזור" value={newComplexForm.area} options={complexAreaOptions} onChange={value => setNewComplexForm(current => ({ ...current, area: value }))} />
-            <Field label="עיר" value={newComplexForm.city} onChange={value => setNewComplexForm(current => ({ ...current, city: value }))} />
-            <Field label="חדרים" value={newComplexForm.rooms} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, rooms: value }))} />
-            <Field label="מקסימום אורחים" value={newComplexForm.maxGuests} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, maxGuests: value }))} />
-            <Field label="שם בעל מתחם" value={newComplexForm.ownerName} onChange={value => setNewComplexForm(current => ({ ...current, ownerName: value }))} />
-            <Field label="טלפון בעל מתחם" value={newComplexForm.ownerPhone} onChange={value => setNewComplexForm(current => ({ ...current, ownerPhone: value }))} />
-            <div className="actions full">
-              <button className="primary-btn" type="button" onClick={addComplex}>
-                <Plus size={16} /> שמור מתחם
-              </button>
-              <button className="ghost-btn" type="button" onClick={() => setShowNewComplex(false)}>ביטול</button>
-            </div>
-          </div>
-        )}
         <div className="form-grid" style={{ marginTop: 12 }}>
           <SelectField label="אזור" value={area} options={areas} onChange={setArea} />
           <Field label="מספר לקוח לשליחה" value={customerPhone} onChange={setCustomerPhone} placeholder="05..." />
@@ -1215,6 +1198,32 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
           )}
         </div>
       </section>
+
+      {showNewComplex && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setShowNewComplex(false)}>
+          <section className="card modal-panel" role="dialog" aria-modal="true" aria-labelledby="new-complex-title" onClick={event => event.stopPropagation()}>
+            <div className="item-head">
+              <h2 className="section-title" id="new-complex-title">הוסף מתחם</h2>
+              <button className="ghost-btn icon-only" type="button" aria-label="סגור" onClick={() => setShowNewComplex(false)}>×</button>
+            </div>
+            <div className="form-grid" style={{ marginTop: 12 }}>
+              <Field label="שם מתחם" value={newComplexForm.name} onChange={value => setNewComplexForm(current => ({ ...current, name: value }))} />
+              <SelectField label="אזור" value={newComplexForm.area} options={complexAreaOptions} onChange={value => setNewComplexForm(current => ({ ...current, area: value }))} />
+              <Field label="עיר" value={newComplexForm.city} onChange={value => setNewComplexForm(current => ({ ...current, city: value }))} />
+              <Field label="חדרים" value={newComplexForm.rooms} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, rooms: value }))} />
+              <Field label="מקסימום אורחים" value={newComplexForm.maxGuests} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, maxGuests: value }))} />
+              <Field label="שם בעל מתחם" value={newComplexForm.ownerName} onChange={value => setNewComplexForm(current => ({ ...current, ownerName: value }))} />
+              <Field label="טלפון בעל מתחם" value={newComplexForm.ownerPhone} onChange={value => setNewComplexForm(current => ({ ...current, ownerPhone: value }))} />
+              <div className="actions full">
+                <button className="primary-btn" type="button" onClick={addComplex}>
+                  <Plus size={16} /> שמור מתחם
+                </button>
+                <button className="ghost-btn" type="button" onClick={() => setShowNewComplex(false)}>ביטול</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
 
       <section className="catalog-grid">
         {complexes.map(complex => {

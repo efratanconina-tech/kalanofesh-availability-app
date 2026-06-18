@@ -757,6 +757,29 @@ button {
   margin-inline-start: auto;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: 82px 14px calc(24px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.34);
+  backdrop-filter: blur(6px);
+}
+
+.modal-panel {
+  width: min(100%, 680px);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
+}
+
+.modal-panel .icon-only {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
 .error-text {
   margin: 0;
   color: #b91c1c;
