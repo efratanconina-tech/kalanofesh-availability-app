@@ -25,7 +25,7 @@ import {
   Users,
   Video,
 } from 'lucide-react';
-import type { AppState, AvailabilityBlock, AvailabilityStatus, Complex, Lead, LeadStatus } from './types';
+import type { AppState, AvailabilityBlock, AvailabilityStatus, Complex, InvoiceStatus, Lead, LeadStatus } from './types';
 import { createAvailabilityBlock, createLead, createTask, hasDateConflict, loadState, saveState } from './lib/store';
 import { HEBREW_WEEKDAYS_SHORT, formatDateLine, formatGregorianDate, formatHebrewDate, getMonthGrid, isPastDate, toYMD, todayYMD } from './lib/dates';
 import {
@@ -63,6 +63,7 @@ type ParsedStayImport = {
   status: AvailabilityStatus;
   amount?: string;
   invoice: boolean;
+  invoiceStatus?: InvoiceStatus;
   paid: boolean;
   note?: string;
 };
@@ -79,6 +80,7 @@ type StayEvent = {
   commissionAmount?: string;
   commissionPaid?: boolean;
   invoiceSent?: boolean;
+  invoiceStatus?: InvoiceStatus;
   status: AvailabilityStatus;
   note?: string;
 };
@@ -98,6 +100,12 @@ const leadStatusLabels: Record<LeadStatus, string> = {
   waiting: 'מחכה',
   closed: 'נסגר',
   irrelevant: 'לא רלוונטי',
+};
+
+const invoiceStatusLabels: Record<InvoiceStatus, string> = {
+  not_sent: 'לא נשלחה חשבונית',
+  sent: 'נשלחה חשבונית',
+  end_of_stay: 'תישלח בסוף השהות',
 };
 
 const areaOptions = ['צפון', 'מרכז', 'ירושלים והסביבה', 'דרום'];
@@ -177,6 +185,7 @@ function getStayEvents(state: AppState): StayEvent[] {
         commissionAmount: block.commissionAmount,
         commissionPaid: block.commissionPaid,
         invoiceSent: block.invoiceSent,
+        invoiceStatus: block.invoiceStatus ?? (block.invoiceSent ? 'sent' : 'not_sent'),
         status: block.status,
         note: block.note,
       };
@@ -405,7 +414,9 @@ function parseStayImportList(input: string, state: AppState): ParsedStayImport[]
     const amountMatch = rest.match(/\b\d{1,3}(?:,\d{3})+\b|\b\d{3,}\b/);
     const amount = amountMatch?.[0];
     const paid = rest.includes('✅') || /\bשולם\b/.test(rest);
-    const invoice = /\bחשבונית\b/.test(rest) || /הוצאה חשבונית/.test(rest);
+    const invoiceAtEnd = /תישלח\s+חשבונית|חשבונית.*סוף\s+השהות|בסוף\s+השהות.*חשבונית/.test(rest);
+    const invoice = !invoiceAtEnd && (/\bחשבונית\b/.test(rest) || /הוצאה חשבונית/.test(rest));
+    const invoiceStatus: InvoiceStatus = invoice ? 'sent' : invoiceAtEnd ? 'end_of_stay' : 'not_sent';
     const complex = findComplexInText(rest, state.complexes);
     const parentheticalNotes = Array.from(rest.matchAll(/\(([^)]+)\)/g)).map(match => match[1]);
 
@@ -419,7 +430,7 @@ function parseStayImportList(input: string, state: AppState): ParsedStayImport[]
     const customerName = nameCandidates[0] || cleanCustomerName(rest) || 'לקוח ללא שם';
     const notes = [
       amount ? `סכום: ${amount}` : '',
-      invoice ? 'חשבונית' : '',
+      invoiceStatus !== 'not_sent' ? invoiceStatusLabels[invoiceStatus] : '',
       paid ? 'שולם' : '',
       complex ? `מתחם שזוהה: ${complex.name}` : 'לא זוהה מתחם - צריך לבחור ידנית בהמשך',
       ...parentheticalNotes,
@@ -438,6 +449,7 @@ function parseStayImportList(input: string, state: AppState): ParsedStayImport[]
       status: 'booked',
       amount,
       invoice,
+      invoiceStatus,
       paid,
       note: notes.join(' | '),
     }];
@@ -864,6 +876,7 @@ function AssistantView({
           commissionAmount: item.amount,
           commissionPaid: item.paid,
           invoiceSent: item.invoice,
+          invoiceStatus: item.invoiceStatus ?? (item.invoice ? 'sent' : 'not_sent'),
           note: item.note,
         })));
 
@@ -881,6 +894,7 @@ function AssistantView({
           commissionAmount: item.amount,
           commissionPaid: item.paid,
           invoiceSent: item.invoice,
+          invoiceStatus: item.invoiceStatus ?? (item.invoice ? 'sent' : 'not_sent'),
           note: item.note,
         }), state);
         persist(next);
@@ -1603,7 +1617,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     customerPhone: '',
     commissionAmount: '',
     commissionPaid: false,
-    invoiceSent: false,
+    invoiceStatus: 'not_sent' as InvoiceStatus,
     note: '',
   });
   const [closeFormError, setCloseFormError] = useState('');
@@ -1654,8 +1668,9 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       if (sent.has(reminder.id)) return;
       const typeLabel = reminder.type === 'arrival' ? 'כניסה' : 'יציאה';
       const timing = reminder.date === today ? 'היום' : 'בעוד 3 ימים';
+      const invoiceReminder = reminder.type === 'departure' && reminder.date === today && reminder.invoiceStatus === 'end_of_stay';
       new Notification(`קלנופש: ${typeLabel} ${timing}`, {
-        body: `${reminder.customerName} - ${reminder.complexName}`,
+        body: `${reminder.customerName} - ${reminder.complexName}${invoiceReminder ? ' | לשלוח חשבונית' : ''}`,
         tag: reminder.id,
       });
       sent.add(reminder.id);
@@ -1691,7 +1706,8 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       customerPhone: closeForm.customerPhone || undefined,
       commissionAmount: closeForm.commissionAmount || undefined,
       commissionPaid: closeForm.commissionPaid,
-      invoiceSent: closeForm.invoiceSent,
+      invoiceSent: closeForm.invoiceStatus === 'sent',
+      invoiceStatus: closeForm.invoiceStatus,
       note: closeForm.note || 'סגירה ממסך אירוחים',
     };
 
@@ -1714,7 +1730,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       customerPhone: '',
       commissionAmount: '',
       commissionPaid: false,
-      invoiceSent: false,
+      invoiceStatus: 'not_sent',
       note: '',
     }));
     setCloseFormTouched(false);
@@ -1795,14 +1811,13 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
               />
               <span>העמלה שולמה</span>
             </label>
-            <label className="owner-select">
-              <input
-                type="checkbox"
-                checked={closeForm.invoiceSent}
-                onChange={event => setCloseForm(current => ({ ...current, invoiceSent: event.target.checked }))}
-              />
-              <span>נשלחה חשבונית</span>
-            </label>
+            <SelectField
+              label="חשבונית"
+              value={closeForm.invoiceStatus}
+              options={Object.keys(invoiceStatusLabels)}
+              labels={invoiceStatusLabels}
+              onChange={value => setCloseForm(current => ({ ...current, invoiceStatus: value as InvoiceStatus }))}
+            />
             <Field className="full" label="הערה" value={closeForm.note} onChange={value => setCloseForm(current => ({ ...current, note: value }))} />
             {closeFormError && <p className="form-error full">{closeFormError}</p>}
             <div className="actions full">
@@ -1924,14 +1939,13 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                     />
                     <span>שולם</span>
                   </label>
-                  <label className="owner-select">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(block.invoiceSent)}
-                      onChange={event => updateClosureBlock(block, { invoiceSent: event.target.checked })}
-                    />
-                    <span>נשלחה חשבונית</span>
-                  </label>
+                  <SelectField
+                    label="חשבונית"
+                    value={block.invoiceStatus ?? (block.invoiceSent ? 'sent' : 'not_sent')}
+                    options={Object.keys(invoiceStatusLabels)}
+                    labels={invoiceStatusLabels}
+                    onChange={value => updateClosureBlock(block, { invoiceStatus: value as InvoiceStatus, invoiceSent: value === 'sent' })}
+                  />
                 </div>
               </div>
             );
@@ -1956,12 +1970,13 @@ function StayEventItem({ event, reminder = false }: { event: StayEvent; reminder
         <span className={`pill ${event.type === 'arrival' ? 'available' : 'check'}`}>{reminder ? reminderLabel : typeLabel}</span>
       </div>
       {event.customerPhone && <span className="muted">{event.customerPhone}</span>}
-      {(event.commissionAmount || event.commissionPaid || event.invoiceSent) && (
+      {(event.commissionAmount || event.commissionPaid || event.invoiceSent || event.invoiceStatus === 'end_of_stay') && (
         <span className="muted">
           {[
             event.commissionAmount ? `עמלה: ${event.commissionAmount}` : '',
             event.commissionPaid ? 'שולם' : '',
-            event.invoiceSent ? 'נשלחה חשבונית' : '',
+            event.invoiceStatus === 'end_of_stay' ? 'תזכורת: לשלוח חשבונית בסוף השהות' : '',
+            event.invoiceSent || event.invoiceStatus === 'sent' ? 'נשלחה חשבונית' : '',
           ].filter(Boolean).join(' · ')}
         </span>
       )}

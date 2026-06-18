@@ -69,6 +69,7 @@ create table if not exists public.availability_blocks (
   commission_amount text,
   commission_paid boolean not null default false,
   invoice_sent boolean not null default false,
+  invoice_status text not null default 'not_sent' check (invoice_status in ('not_sent', 'sent', 'end_of_stay')),
   note text,
   created_by uuid references public.profiles(id),
   updated_by uuid references public.profiles(id),
@@ -80,6 +81,10 @@ create table if not exists public.availability_blocks (
 alter table public.availability_blocks add column if not exists commission_amount text;
 alter table public.availability_blocks add column if not exists commission_paid boolean not null default false;
 alter table public.availability_blocks add column if not exists invoice_sent boolean not null default false;
+alter table public.availability_blocks add column if not exists invoice_status text not null default 'not_sent';
+alter table public.availability_blocks drop constraint if exists availability_blocks_invoice_status_check;
+alter table public.availability_blocks add constraint availability_blocks_invoice_status_check
+  check (invoice_status in ('not_sent', 'sent', 'end_of_stay'));
 
 create table if not exists public.lead_offers (
   id uuid primary key default gen_random_uuid(),

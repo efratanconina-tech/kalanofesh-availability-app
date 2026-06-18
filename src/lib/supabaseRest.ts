@@ -249,6 +249,7 @@ interface AvailabilityBlockRow {
   commission_amount?: string | null;
   commission_paid?: boolean | null;
   invoice_sent?: boolean | null;
+  invoice_status?: AvailabilityBlock['invoiceStatus'] | null;
   note?: string | null;
   created_at: string;
   updated_at: string;
@@ -325,6 +326,7 @@ function fromAvailabilityRow(row: AvailabilityBlockRow): AvailabilityBlock {
     commissionAmount: row.commission_amount ?? undefined,
     commissionPaid: row.commission_paid ?? false,
     invoiceSent: row.invoice_sent ?? false,
+    invoiceStatus: row.invoice_status ?? (row.invoice_sent ? 'sent' : 'not_sent'),
     note: row.note ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -390,6 +392,10 @@ function toAvailabilityRow(data: Omit<AvailabilityBlock, 'id' | 'createdAt' | 'u
   if (data.commissionAmount) row.commission_amount = data.commissionAmount;
   if (data.commissionPaid) row.commission_paid = data.commissionPaid;
   if (data.invoiceSent) row.invoice_sent = data.invoiceSent;
+  if (data.invoiceStatus) {
+    row.invoice_status = data.invoiceStatus;
+    row.invoice_sent = data.invoiceStatus === 'sent';
+  }
 
   return row;
 }
@@ -406,6 +412,10 @@ function toAvailabilityPatchRow(data: Partial<AvailabilityBlock>) {
   if (data.commissionAmount !== undefined) row.commission_amount = data.commissionAmount || null;
   if (data.commissionPaid !== undefined) row.commission_paid = data.commissionPaid;
   if (data.invoiceSent !== undefined) row.invoice_sent = data.invoiceSent;
+  if (data.invoiceStatus !== undefined) {
+    row.invoice_status = data.invoiceStatus;
+    row.invoice_sent = data.invoiceStatus === 'sent';
+  }
   if (data.note !== undefined) row.note = data.note;
   return row;
 }

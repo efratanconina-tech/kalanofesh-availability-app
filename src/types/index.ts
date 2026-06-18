@@ -1,4 +1,5 @@
 export type AvailabilityStatus = 'available' | 'booked' | 'tentative' | 'offered' | 'check' | 'maintenance';
+export type InvoiceStatus = 'not_sent' | 'sent' | 'end_of_stay';
 export type LeadStatus = 'new' | 'in_progress' | 'waiting' | 'closed' | 'irrelevant';
 export type OfferStatus = 'offered' | 'interested' | 'rejected' | 'closed';
 export type UserRole = 'admin' | 'staff';
@@ -41,6 +42,7 @@ export interface AvailabilityBlock {
   commissionAmount?: string;
   commissionPaid?: boolean;
   invoiceSent?: boolean;
+  invoiceStatus?: InvoiceStatus;
   note?: string;
   createdAt: string;
   updatedAt: string;
