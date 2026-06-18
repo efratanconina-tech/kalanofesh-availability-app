@@ -1630,7 +1630,10 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   const upcomingArrivals = allEvents.filter(event => event.type === 'arrival' && event.date >= today).slice(0, 40);
   const closureBlocks = useMemo(
     () => state.availabilityBlocks
-      .filter(block => block.status !== 'available')
+      .filter(block =>
+        block.status !== 'available' &&
+        Boolean(block.customerName || block.customerPhone || block.commissionAmount || block.commissionPaid || block.invoiceSent || block.invoiceStatus === 'end_of_stay')
+      )
       .sort((a, b) => b.startDate.localeCompare(a.startDate))
       .slice(0, 80),
     [state.availabilityBlocks],
