@@ -590,6 +590,17 @@ button {
   transform: rotate(180deg);
 }
 
+.closure-item.expanded .catalog-toggle svg {
+  transform: rotate(180deg);
+}
+
+.closure-details {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid rgba(100, 116, 139, 0.12);
+  padding-top: 12px;
+}
+
 .catalog-image,
 .catalog-placeholder {
   width: 100%;

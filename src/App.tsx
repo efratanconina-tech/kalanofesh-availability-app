@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.11';
+const APP_VERSION = '2026.06.19.12';
 
 type ParsedStayImport = {
   id: string;
@@ -1731,6 +1731,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   const [editingArrivalId, setEditingArrivalId] = useState<string | null>(null);
   const [editingArrivalDraft, setEditingArrivalDraft] = useState<ArrivalEditDraft | null>(null);
   const [editingArrivalError, setEditingArrivalError] = useState('');
+  const [expandedClosureIds, setExpandedClosureIds] = useState<string[]>([]);
   const [notificationStatus, setNotificationStatus] = useState(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
@@ -1800,6 +1801,13 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     const next = new Date(year, month + direction, 1);
     setYear(next.getFullYear());
     setMonth(next.getMonth());
+  };
+  const toggleClosureDetails = (blockId: string) => {
+    setExpandedClosureIds(current =>
+      current.includes(blockId)
+        ? current.filter(id => id !== blockId)
+        : [...current, blockId]
+    );
   };
 
   const saveCloseBlock = async () => {
@@ -2180,48 +2188,72 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
           {closureBlocks.length === 0 && <p className="muted">אין סגירות להצגה.</p>}
           {closureBlocks.map(block => {
             const complex = state.complexes.find(item => item.id === block.complexId);
+            const isExpanded = expandedClosureIds.includes(block.id);
+            const summary = [
+              block.commissionAmount ? `עמלה: ${block.commissionAmount}` : '',
+              block.commissionPaid ? 'שולם' : '',
+              block.invoiceStatus === 'end_of_stay' ? 'חשבונית בסוף השהות' : '',
+              block.invoiceSent || block.invoiceStatus === 'sent' ? 'נשלחה חשבונית' : '',
+            ].filter(Boolean).join(' · ');
 
             return (
-              <div className="list-item" key={block.id}>
+              <div className={`list-item closure-item ${isExpanded ? 'expanded' : 'collapsed'}`} key={block.id}>
                 <div className="item-head">
                   <div>
                     <p className="item-title">{block.customerName || 'סגירה ללא שם'}</p>
                     <span className="muted">{complex?.name ?? 'מתחם'} · {formatDateLine(block.startDate, block.endDate)}</span>
+                    {summary && <span className="muted">{summary}</span>}
                   </div>
-                  <span className={`pill ${block.status}`}>{statusLabels[block.status]}</span>
+                  <div className="actions">
+                    <span className={`pill ${block.status}`}>{statusLabels[block.status]}</span>
+                    <button
+                      className="ghost-btn icon-only catalog-toggle"
+                      type="button"
+                      aria-expanded={isExpanded}
+                      aria-label={isExpanded ? 'סגור פרטי סגירה' : 'פתח פרטי סגירה'}
+                      title={isExpanded ? 'סגירת פרטים' : 'פתיחת פרטים'}
+                      onClick={() => toggleClosureDetails(block.id)}
+                    >
+                      <ChevronDown size={18} />
+                    </button>
+                  </div>
                 </div>
-                {block.customerPhone && <span className="muted">{block.customerPhone}</span>}
-                {block.note && <span className="muted">{block.note}</span>}
-                <div className="form-grid">
-                  <SelectField
-                    label="סטטוס"
-                    value={block.status}
-                    options={['booked', 'tentative', 'offered', 'check', 'maintenance']}
-                    labels={statusLabels}
-                    onChange={value => updateClosureBlock(block, { status: value as AvailabilityStatus })}
-                  />
-                  <Field
-                    label="עמלה"
-                    value={block.commissionAmount ?? ''}
-                    onChange={value => updateClosureBlock(block, { commissionAmount: value })}
-                    placeholder="לדוגמה: 1,500"
-                  />
-                  <label className="owner-select">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(block.commissionPaid)}
-                      onChange={event => updateClosureBlock(block, { commissionPaid: event.target.checked })}
-                    />
-                    <span>שולם</span>
-                  </label>
-                  <SelectField
-                    label="חשבונית"
-                    value={block.invoiceStatus ?? (block.invoiceSent ? 'sent' : 'not_sent')}
-                    options={Object.keys(invoiceStatusLabels)}
-                    labels={invoiceStatusLabels}
-                    onChange={value => updateClosureBlock(block, { invoiceStatus: value as InvoiceStatus, invoiceSent: value === 'sent' })}
-                  />
-                </div>
+                {isExpanded && (
+                  <div className="closure-details">
+                    {block.customerPhone && <span className="muted">{block.customerPhone}</span>}
+                    {block.note && <span className="muted">{block.note}</span>}
+                    <div className="form-grid">
+                      <SelectField
+                        label="סטטוס"
+                        value={block.status}
+                        options={['booked', 'tentative', 'offered', 'check', 'maintenance']}
+                        labels={statusLabels}
+                        onChange={value => updateClosureBlock(block, { status: value as AvailabilityStatus })}
+                      />
+                      <Field
+                        label="עמלה"
+                        value={block.commissionAmount ?? ''}
+                        onChange={value => updateClosureBlock(block, { commissionAmount: value })}
+                        placeholder="לדוגמה: 1,500"
+                      />
+                      <label className="owner-select">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(block.commissionPaid)}
+                          onChange={event => updateClosureBlock(block, { commissionPaid: event.target.checked })}
+                        />
+                        <span>שולם</span>
+                      </label>
+                      <SelectField
+                        label="חשבונית"
+                        value={block.invoiceStatus ?? (block.invoiceSent ? 'sent' : 'not_sent')}
+                        options={Object.keys(invoiceStatusLabels)}
+                        labels={invoiceStatusLabels}
+                        onChange={value => updateClosureBlock(block, { invoiceStatus: value as InvoiceStatus, invoiceSent: value === 'sent' })}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

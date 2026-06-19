@@ -1,4 +1,4 @@
-const KALNOFESH_CACHE = 'kalanofesh-app-v16';
+const KALNOFESH_CACHE = 'kalanofesh-app-v17';
 const CORE_ASSETS = ['/', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', event => {
