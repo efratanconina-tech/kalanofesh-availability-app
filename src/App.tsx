@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.20';
+const APP_VERSION = '2026.06.19.21';
 
 type ParsedStayImport = {
   id: string;
@@ -1942,6 +1942,35 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
         : [...current, blockId]
     );
   };
+  const addInvoiceTaskIfNeeded = async (baseState: AppState, block: AvailabilityBlock): Promise<AppState> => {
+    if (block.invoiceStatus !== 'end_of_stay') return baseState;
+
+    const complex = baseState.complexes.find(item => item.id === block.complexId);
+    const customerName = block.customerName || 'סגירה ללא שם';
+    const complexName = complex?.name ?? 'מתחם';
+    const taskData = {
+      title: `להוציא חשבונית בסוף השהות - ${customerName} (${complexName})`,
+      dueDate: block.endDate,
+      complexId: block.complexId,
+    };
+    const alreadyExists = baseState.tasks.some(task =>
+      task.dueDate === taskData.dueDate &&
+      task.complexId === taskData.complexId &&
+      task.title === taskData.title
+    );
+    if (alreadyExists) return baseState;
+
+    if (session) {
+      try {
+        const task = await insertCloudTask(session, taskData);
+        return { ...baseState, tasks: [task, ...baseState.tasks] };
+      } catch {
+        return createTask(baseState, taskData);
+      }
+    }
+
+    return createTask(baseState, taskData);
+  };
 
   const saveCloseBlock = async () => {
     setCloseFormError('');
@@ -1967,14 +1996,24 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     if (session) {
       try {
         const block = await insertCloudAvailability(session, blockData);
-        persist({ ...state, availabilityBlocks: [...state.availabilityBlocks, block] });
+        const nextState = await addInvoiceTaskIfNeeded(
+          { ...state, availabilityBlocks: [...state.availabilityBlocks, block] },
+          block
+        );
+        persist(nextState);
       } catch (error) {
-        persist(createAvailabilityBlock(state, blockData));
+        const localState = createAvailabilityBlock(state, blockData);
+        const block = localState.availabilityBlocks[localState.availabilityBlocks.length - 1];
+        const nextState = block ? await addInvoiceTaskIfNeeded(localState, block) : localState;
+        persist(nextState);
         setCloseFormError(describeCloudSaveError(error));
         return;
       }
     } else {
-      persist(createAvailabilityBlock(state, blockData));
+      const localState = createAvailabilityBlock(state, blockData);
+      const block = localState.availabilityBlocks[localState.availabilityBlocks.length - 1];
+      const nextState = block ? await addInvoiceTaskIfNeeded(localState, block) : localState;
+      persist(nextState);
     }
 
     setCloseForm(current => ({
@@ -1992,17 +2031,22 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
 
   const updateClosureBlock = async (block: AvailabilityBlock, patch: Partial<AvailabilityBlock>) => {
     const updated = { ...block, ...patch, updatedAt: new Date().toISOString() };
-    persist({
+    const shouldCreateInvoiceTask = patch.invoiceStatus === 'end_of_stay' && block.invoiceStatus !== 'end_of_stay';
+    const optimisticState = {
       ...state,
       availabilityBlocks: state.availabilityBlocks.map(item => item.id === block.id ? updated : item),
-    });
+    };
+    const nextState = shouldCreateInvoiceTask
+      ? await addInvoiceTaskIfNeeded(optimisticState, updated)
+      : optimisticState;
+    persist(nextState);
 
     if (session) {
       try {
         const cloudBlock = await updateCloudAvailability(session, block.id, patch);
         persist({
-          ...state,
-          availabilityBlocks: state.availabilityBlocks.map(item => item.id === block.id ? cloudBlock : item),
+          ...nextState,
+          availabilityBlocks: nextState.availabilityBlocks.map(item => item.id === block.id ? cloudBlock : item),
         });
       } catch {
         // Local update remains visible. If the cloud schema is missing columns, rerun supabase/schema.sql.
