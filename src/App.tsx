@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.08';
+const APP_VERSION = '2026.06.19.09';
 
 type ParsedStayImport = {
   id: string;
@@ -583,6 +583,19 @@ function buildAssistantReply(input: string, state: AppState): string {
     ].join('\n');
   }
 
+  if (normalized.includes('שבת הקרובה') || normalized.includes('שבת קרובה')) {
+    const range = getUpcomingShabbatRanges(1)[0];
+    if (!range) return 'לא מצאתי שבת קרובה לבדיקה.';
+    const available = findAvailableComplexes(state, range.startDate, range.endDate);
+    if (!available.length) return `לשבת הקרובה (${formatDateLine(range.labelDate)}) לא מצאתי מתחמים פנויים.`;
+
+    return [
+      `לשבת הקרובה (${formatDateLine(range.labelDate)}) מצאתי ${available.length} מתחמים פנויים:`,
+      ...available.slice(0, 12).map(complex => `• ${complex.name} - ${complex.city}, עד ${complex.maxGuests} אורחים`),
+      available.length > 12 ? `ועוד ${available.length - 12} מתחמים.` : '',
+    ].filter(Boolean).join('\n');
+  }
+
   if (normalized.includes('שבת') || normalized.includes('שבתות')) {
     const ranges = getUpcomingShabbatRanges(3)
       .map(range => ({
@@ -604,10 +617,10 @@ function buildAssistantReply(input: string, state: AppState): string {
   }
 
   if (normalized.includes('פנוי') || normalized.includes('פנויות') || normalized.includes('זמינות')) {
-    return 'אפשר לכתוב למשל: "רשימת שבתות פנויות לחודשים הקרובים" או "מה פנוי ב-2026-07-10".';
+    return 'אפשר לכתוב למשל: "מה פנוי לשבת הקרובה", "רשימת שבתות פנויות לחודשים הקרובים" או "מה פנוי ב-2026-07-10".';
   }
 
-  return 'כרגע אני יודעת לחשב זמינות מתוך הנתונים. נסי לכתוב: "רשימת שבתות פנויות לחודשים הקרובים".';
+  return 'כרגע אני יודעת לחשב זמינות מתוך הנתונים. נסי לכתוב: "מה פנוי לשבת הקרובה".';
 }
 
 async function askGptAssistant(message: string, state: AppState): Promise<string> {
@@ -969,8 +982,8 @@ function AssistantView({
           <button className="secondary-btn" type="button" onClick={() => sendMessage('רשימת שבתות פנויות לחודשים הקרובים')}>
             שבתות פנויות
           </button>
-          <button className="secondary-btn" type="button" onClick={() => sendMessage(`מה פנוי ב-${todayYMD()}`)}>
-            מה פנוי היום
+          <button className="secondary-btn" type="button" onClick={() => sendMessage('מה פנוי לשבת הקרובה')}>
+            מה פנוי לשבת הקרובה
           </button>
           <button className="secondary-btn" type="button" onClick={() => setInput('כניסות לוילות:\n')}>
             הדבקת כניסות
@@ -998,7 +1011,7 @@ function AssistantView({
             value={input}
             onChange={event => setInput(event.target.value)}
             rows={4}
-            placeholder="לדוגמה: רשימת שבתות פנויות לחודשים הקרובים, או הדבקת רשימת כניסות"
+            placeholder="לדוגמה: מה פנוי לשבת הקרובה, או הדבקת רשימת כניסות"
           />
           <button className="primary-btn" type="submit">
             <Send size={16} /> שלח
