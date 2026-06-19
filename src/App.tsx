@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.10';
+const APP_VERSION = '2026.06.19.11';
 
 type ParsedStayImport = {
   id: string;
@@ -567,6 +567,33 @@ function buildComplexOfferText(complex: Complex, context?: { startDate?: string;
     context?.guests ? `כמות אורחים: ${context.guests}` : '',
     context?.notes ? `הערות: ${context.notes}` : '',
   ].filter(Boolean).join('\n');
+}
+
+function describeCloudSaveError(error: unknown): string {
+  const rawMessage = error instanceof Error ? error.message : String(error ?? '');
+  const message = rawMessage.toLowerCase();
+
+  if (message.includes('invoice_status') || message.includes('end_of_stay') || message.includes('availability_blocks_invoice_status_check')) {
+    return 'נשמר מקומית, אבל לא בענן. ב-Supabase צריך להריץ את עדכון החשבוניות שמוסיף invoice_status עם הערך end_of_stay.';
+  }
+
+  if (message.includes('commission_amount') || message.includes('commission_paid') || message.includes('invoice_sent')) {
+    return 'נשמר מקומית, אבל לא בענן. ב-Supabase חסרים שדות עמלה/חשבונית בטבלת availability_blocks.';
+  }
+
+  if (message.includes('availability_dates_valid') || message.includes('end_date') || message.includes('start_date')) {
+    return 'נשמר מקומית, אבל לא בענן. ב-Supabase צריך לעדכן את בדיקת התאריכים כך שתאפשר גם כניסה ויציאה באותו יום.';
+  }
+
+  if (message.includes('foreign key') || message.includes('complex_id')) {
+    return 'נשמר מקומית, אבל לא בענן. נראה שהמתחם שנבחר לא קיים/לא מסונכרן ב-Supabase.';
+  }
+
+  if (message.includes('jwt') || message.includes('permission') || message.includes('row-level security') || message.includes('401') || message.includes('403')) {
+    return 'נשמר מקומית, אבל לא בענן. צריך להתחבר מחדש או לבדוק הרשאות Supabase.';
+  }
+
+  return `נשמר מקומית, אבל לא בענן. הודעת Supabase: ${rawMessage || 'שגיאה לא ידועה'}`;
 }
 
 function buildAssistantReply(input: string, state: AppState): string {
@@ -1800,9 +1827,9 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       try {
         const block = await insertCloudAvailability(session, blockData);
         persist({ ...state, availabilityBlocks: [...state.availabilityBlocks, block] });
-      } catch {
+      } catch (error) {
         persist(createAvailabilityBlock(state, blockData));
-        setCloseFormError('נשמר מקומית, אבל לא בענן. כנראה צריך להריץ את עדכון הסכמה ב-Supabase.');
+        setCloseFormError(describeCloudSaveError(error));
         return;
       }
     } else {
