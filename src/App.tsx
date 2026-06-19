@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.14';
+const APP_VERSION = '2026.06.19.15';
 
 type ParsedStayImport = {
   id: string;
@@ -2394,7 +2394,7 @@ function StayEventItem({ event, reminder = false }: { event: StayEvent; reminder
 
 function CalendarView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
   const now = new Date();
-  const [complexId, setComplexId] = useState(state.complexes[0]?.id ?? '');
+  const [complexId, setComplexId] = useState('all');
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear] = useState(now.getFullYear());
   const [status, setStatus] = useState<AvailabilityStatus>('booked');
@@ -2404,27 +2404,48 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     endDate: '',
     note: '',
   });
-  const selected = state.complexes.find(complex => complex.id === complexId);
+  const activeComplexes = useMemo(() => state.complexes.filter(complex => complex.active), [state.complexes]);
+  const selected = activeComplexes.find(complex => complex.id === complexId);
   const grid = getMonthGrid(year, month);
-  const blocks = state.availabilityBlocks.filter(block => block.complexId === complexId);
+  const visibleComplexes = complexId === 'all'
+    ? activeComplexes
+    : activeComplexes.filter(complex => complex.id === complexId);
+  const visibleComplexIds = new Set(visibleComplexes.map(complex => complex.id));
+  const blocks = state.availabilityBlocks.filter(block => visibleComplexIds.has(block.complexId));
   const selectedDateEnd = useMemo(() => {
     const [dateYear, dateMonth, dateDay] = selectedDate.split('-').map(Number);
     return toYMD(new Date(dateYear, dateMonth - 1, dateDay + 1));
   }, [selectedDate]);
-  const dailyAvailability = useMemo(() => (
-    state.complexes
-      .filter(complex => complex.active)
-      .map(complex => {
-        const block = state.availabilityBlocks.find(item =>
-          item.complexId === complex.id &&
-          item.status !== 'available' &&
-          hasDateConflict(item, selectedDate, selectedDateEnd)
-        );
+  const getDayEnd = (date: Date) => toYMD(new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1));
+  const getBlockForDate = (targetComplexId: string, dateStr: string) => {
+    const endDate = toYMD(addDays(dateFromYMD(dateStr), 1));
+    const matches = state.availabilityBlocks.filter(item =>
+      item.complexId === targetComplexId &&
+      hasDateConflict(item, dateStr, endDate)
+    );
 
-        return { complex, block };
+    return matches.find(item => item.status === 'booked')
+      ?? matches.find(item => item.status === 'available')
+      ?? matches[0];
+  };
+  const dailyAvailability = useMemo(() => (
+    activeComplexes
+      .map(complex => {
+        const block = getBlockForDate(complex.id, selectedDate);
+        const bucket = block?.status === 'available'
+          ? 'free'
+          : block?.status === 'booked'
+            ? 'busy'
+            : 'optional';
+
+        return { complex, block, bucket };
       })
-  ), [selectedDate, selectedDateEnd, state.availabilityBlocks, state.complexes]);
-  const freeComplexes = dailyAvailability.filter(item => !item.block);
+  ), [activeComplexes, selectedDate, state.availabilityBlocks]);
+  const selectedSummary = {
+    free: dailyAvailability.filter(item => item.bucket === 'free'),
+    busy: dailyAvailability.filter(item => item.bucket === 'busy'),
+    optional: dailyAvailability.filter(item => item.bucket === 'optional'),
+  };
 
   const saveBlock = async (blockData: {
     complexId: string;
@@ -2445,6 +2466,18 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     persist(next);
   };
 
+  const markComplexDate = async (targetComplexId: string, nextStatus: AvailabilityStatus) => {
+    if (isPastDate(selectedDate)) return;
+
+    await saveBlock({
+      complexId: targetComplexId,
+      startDate: selectedDate,
+      endDate: selectedDateEnd,
+      status: nextStatus,
+      note: nextStatus === 'booked' ? 'תפוס אצל בעל הוילה' : 'בעל המתחם אישר שפנוי',
+    });
+  };
+
   const selectDay = (date: Date) => {
     const dateStr = toYMD(date);
     if (isPastDate(dateStr)) return;
@@ -2459,7 +2492,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   };
 
   const markSelectedDay = async () => {
-    if (isPastDate(selectedDate)) return;
+    if (isPastDate(selectedDate) || complexId === 'all') return;
 
     await saveBlock({
       complexId,
@@ -2471,7 +2504,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   };
 
   const saveRange = async () => {
-    if (!rangeForm.startDate || !rangeForm.endDate || rangeForm.endDate < rangeForm.startDate || isPastDate(rangeForm.startDate)) return;
+    if (complexId === 'all' || !rangeForm.startDate || !rangeForm.endDate || rangeForm.endDate < rangeForm.startDate || isPastDate(rangeForm.startDate)) return;
 
     await saveBlock({
       complexId,
@@ -2510,12 +2543,20 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   return (
     <div className="grid">
       <section className="card">
-        <h2 className="section-title">לוח זמינות לפי מתחם</h2>
+        <h2 className="section-title">לוחות זמינות</h2>
         <div className="form-grid">
-          <SelectField label="מתחם" value={complexId} options={state.complexes.map(complex => complex.id)} labels={Object.fromEntries(state.complexes.map(complex => [complex.id, complex.name]))} onChange={setComplexId} />
+          <SelectField
+            label="מתחם"
+            value={complexId}
+            options={['all', ...activeComplexes.map(complex => complex.id)]}
+            labels={{ all: 'הכל', ...Object.fromEntries(activeComplexes.map(complex => [complex.id, complex.name])) }}
+            onChange={setComplexId}
+          />
           <SelectField label="סימון" value={status} options={['booked', 'available']} labels={statusLabels} onChange={value => setStatus(value as AvailabilityStatus)} />
         </div>
-        {selected && <p className="muted">{selected.city} · {selected.rooms} חדרים · עד {selected.maxGuests} אורחים</p>}
+        <p className="muted">
+          {selected ? `${selected.city} · ${selected.rooms} חדרים · עד ${selected.maxGuests} אורחים` : 'בחרי הכל כדי לסקור את כל המתחמים, או מתחם מסוים כדי לסמן טווח.'}
+        </p>
       </section>
 
       <section className="card">
@@ -2549,9 +2590,9 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
           />
         </div>
         <div className="actions" style={{ marginTop: 12 }}>
-          <button className="primary-btn" type="button" onClick={saveRange}>שמור טווח</button>
-          <button className="secondary-btn" type="button" onClick={markSelectedDay}>סמן את היום שנבחר</button>
-          <span className="muted">לחיצה על יום בלוח בודקת מי פנוי באותו תאריך וממלאת את טווח הסימון.</span>
+          <button className="primary-btn" type="button" onClick={saveRange} disabled={complexId === 'all'}>שמור טווח</button>
+          <button className="secondary-btn" type="button" onClick={markSelectedDay} disabled={complexId === 'all'}>סמן את היום שנבחר</button>
+          <span className="muted">במצב “הכל” מסמנים מתוך רשימת התאריך. לטווחים בחרי מתחם מסוים.</span>
         </div>
       </section>
 
@@ -2560,6 +2601,11 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
           <button className="ghost-btn" type="button" onClick={() => moveMonth(-1)}>הקודם</button>
           <h2 className="section-title">{new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' }).format(new Date(year, month, 1))}</h2>
           <button className="ghost-btn" type="button" onClick={() => moveMonth(1)}>הבא</button>
+        </div>
+        <div className="calendar-legend">
+          <span className="legend-dot free" /> פנוי בוודאות
+          <span className="legend-dot busy" /> תפוס בוודאות
+          <span className="legend-dot optional" /> אופציונלי / לא סומן
         </div>
         <div className="calendar">
           <div className="calendar-head">
@@ -2570,19 +2616,23 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
               {week.map((day, dayIndex) => {
                 if (!day) return <span key={dayIndex} />;
                 const dateStr = toYMD(day);
-                const block = blocks.find(item => hasDateConflict(item, dateStr, toYMD(new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1))));
+                const dayEnd = getDayEnd(day);
+                const dayBlocks = blocks.filter(item => hasDateConflict(item, dateStr, dayEnd));
+                const freeCount = dayBlocks.filter(item => item.status === 'available').length;
+                const busyCount = dayBlocks.filter(item => item.status === 'booked').length;
+                const optionalCount = Math.max(visibleComplexes.length - freeCount - busyCount, 0);
                 const className = [
                   'day',
                   isPastDate(dateStr) ? 'past' : '',
                   dateStr === selectedDate ? 'selected' : '',
-                  block?.status === 'available' ? 'free' : '',
-                  block?.status === 'booked' ? 'busy' : '',
-                  block && block.status !== 'available' && block.status !== 'booked' ? 'pending' : '',
+                  busyCount > 0 ? 'busy' : '',
+                  busyCount === 0 && freeCount > 0 ? 'free' : '',
+                  busyCount === 0 && freeCount === 0 ? 'pending' : '',
                 ].filter(Boolean).join(' ');
                 return (
                   <button className={className} disabled={isPastDate(dateStr)} key={dateStr} type="button" onClick={() => selectDay(day)} title={`בדיקת זמינות: ${formatDateLine(dateStr)}`}>
                     <span>{day.getDate()}</span>
-                    <small>{formatHebrewDate(dateStr).split(' ').slice(0, 2).join(' ')}</small>
+                    <small>{freeCount} פנוי · {busyCount} תפוס · {optionalCount} ?</small>
                   </button>
                 );
               })}
@@ -2594,31 +2644,42 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       <section className="card">
         <div className="item-head">
           <div>
-            <h2 className="section-title">בדיקת זמינות לתאריך</h2>
+            <h2 className="section-title">מה קורה בתאריך שנבחר</h2>
             <p className="muted">{formatDateLine(selectedDate)}</p>
           </div>
-          <span className="pill available">{freeComplexes.length} פנויים</span>
+          <div className="actions">
+            <span className="pill available">{selectedSummary.free.length} פנויים</span>
+            <span className="pill booked">{selectedSummary.busy.length} תפוסים</span>
+            <span className="pill check">{selectedSummary.optional.length} אופציונליים</span>
+          </div>
         </div>
         <div className="availability-grid">
-          {dailyAvailability.map(({ complex, block }) => {
-            const isFree = !block;
+          {dailyAvailability.map(({ complex, block, bucket }) => {
+            const isFree = bucket === 'free';
+            const isBusy = bucket === 'busy';
 
             return (
-              <div className={`availability-item ${isFree ? 'free' : 'blocked'}`} key={complex.id}>
+              <div className={`availability-item ${isFree ? 'free' : isBusy ? 'blocked' : 'optional'}`} key={complex.id}>
                 <div className="item-head">
                   <div>
                     <p className="item-title">{complex.name}</p>
                     <span className="muted">{complex.city} · עד {complex.maxGuests} אורחים · {complex.rooms} חדרים</span>
                   </div>
-                  <span className={`pill ${isFree ? 'available' : block.status}`}>
-                    {isFree ? 'פנוי בוודאות' : statusLabels[block.status]}
+                  <span className={`pill ${isFree ? 'available' : isBusy ? 'booked' : 'check'}`}>
+                    {isFree ? 'פנוי בוודאות' : isBusy ? 'תפוס בוודאות' : block ? statusLabels[block.status] : 'אופציונלי'}
                   </span>
                 </div>
                 {block?.customerName && <span className="muted">{block.customerName}{block.customerPhone ? ` · ${block.customerPhone}` : ''}</span>}
                 {block?.note && <span className="muted">{block.note}</span>}
                 <div className="actions">
+                  <button className="secondary-btn" type="button" onClick={() => markComplexDate(complex.id, 'available')}>
+                    פנוי
+                  </button>
+                  <button className="primary-btn" type="button" onClick={() => markComplexDate(complex.id, 'booked')}>
+                    תפוס
+                  </button>
                   <button
-                    className={isFree ? 'primary-btn' : 'secondary-btn'}
+                    className="ghost-btn"
                     type="button"
                     onClick={() => {
                       setComplexId(complex.id);
@@ -2629,7 +2690,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
                       }));
                     }}
                   >
-                    בחר לסימון
+                    בחר לטווח
                   </button>
                   {complex.ownerPhone && <a className="ghost-btn" href={`tel:${complex.ownerPhone}`}>התקשר לבעל מתחם</a>}
                 </div>
@@ -2640,13 +2701,59 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       </section>
 
       <section className="card">
-        <h2 className="section-title">סימונים קיימים</h2>
+        <h2 className="section-title">לוח לפי מתחם</h2>
+        <div className="complex-calendar-list">
+          {visibleComplexes.map(complex => (
+            <div className="complex-calendar-row" key={`calendar-row-${complex.id}`}>
+              <button className="complex-calendar-name" type="button" onClick={() => setComplexId(complex.id)}>
+                <span>{complex.name}</span>
+                <small>{complex.city}</small>
+              </button>
+              <div className="complex-calendar-scroll">
+                {grid.flatMap(week => week.filter(Boolean) as Date[]).map(day => {
+                  const dateStr = toYMD(day);
+                  const block = getBlockForDate(complex.id, dateStr);
+                  const className = [
+                    'mini-day',
+                    dateStr === selectedDate ? 'selected' : '',
+                    block?.status === 'available' ? 'free' : '',
+                    block?.status === 'booked' ? 'busy' : '',
+                    !block || (block.status !== 'available' && block.status !== 'booked') ? 'optional' : '',
+                    isPastDate(dateStr) ? 'past' : '',
+                  ].filter(Boolean).join(' ');
+
+                  return (
+                    <button
+                      className={className}
+                      type="button"
+                      key={`${complex.id}-${dateStr}`}
+                      disabled={isPastDate(dateStr)}
+                      title={`${complex.name} · ${formatDateLine(dateStr)} · ${block ? statusLabels[block.status] : 'אופציונלי'}`}
+                      onClick={() => {
+                        setSelectedDate(dateStr);
+                        setComplexId(complex.id);
+                        setRangeForm(current => ({ ...current, startDate: dateStr, endDate: toYMD(addDays(dateFromYMD(dateStr), 1)) }));
+                      }}
+                    >
+                      {day.getDate()}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <h2 className="section-title">סימונים קיימים {selected ? `- ${selected.name}` : ''}</h2>
         <div className="list">
           {byDate(blocks).filter(block => block.endDate >= todayYMD()).map(block => (
             <div className="list-item" key={block.id}>
               <div className="item-head">
                 <div>
                   <p className="item-title">{formatDateLine(block.startDate, block.endDate)}</p>
+                  {complexId === 'all' && <span className="muted">{activeComplexes.find(complex => complex.id === block.complexId)?.name ?? 'מתחם'}</span>}
                   {block.customerName && <span className="muted">{block.customerName}{block.customerPhone ? ` · ${block.customerPhone}` : ''}</span>}
                 </div>
                 <span className={`pill ${block.status}`}>{statusLabels[block.status]}</span>

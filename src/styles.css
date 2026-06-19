@@ -464,6 +464,37 @@ button {
   color: #475569;
 }
 
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 0 12px;
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  margin-inline-start: 4px;
+}
+
+.legend-dot.free {
+  background: #22c55e;
+}
+
+.legend-dot.busy {
+  background: #ef4444;
+}
+
+.legend-dot.optional {
+  background: #94a3b8;
+}
+
 .stay-calendar .calendar-row {
   align-items: stretch;
 }
@@ -555,6 +586,96 @@ button {
 .availability-item.blocked {
   border-color: rgba(239, 68, 68, 0.18);
   background: rgba(239, 68, 68, 0.035);
+}
+
+.availability-item.optional {
+  border-color: rgba(100, 116, 139, 0.16);
+  background: rgba(100, 116, 139, 0.035);
+}
+
+.complex-calendar-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.complex-calendar-row {
+  display: grid;
+  grid-template-columns: minmax(104px, 128px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(100, 116, 139, 0.12);
+  border-radius: 12px;
+  padding: 8px;
+  background: #fff;
+}
+
+.complex-calendar-name {
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #0f172a;
+  display: grid;
+  justify-items: start;
+  align-content: center;
+  gap: 2px;
+  padding: 7px 9px;
+  font-weight: 900;
+  text-align: right;
+}
+
+.complex-calendar-name small {
+  color: #64748b;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.complex-calendar-scroll {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 2px 1px 4px;
+  scrollbar-width: thin;
+}
+
+.mini-day {
+  flex: 0 0 34px;
+  height: 34px;
+  border: 1px solid rgba(100, 116, 139, 0.14);
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.mini-day.free {
+  border-color: rgba(34, 197, 94, 0.32);
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.mini-day.busy {
+  border-color: rgba(239, 68, 68, 0.32);
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
+}
+
+.mini-day.optional {
+  border-color: rgba(100, 116, 139, 0.16);
+  background: rgba(100, 116, 139, 0.06);
+  color: #475569;
+}
+
+.mini-day.selected {
+  box-shadow: 0 0 0 2px rgba(205, 168, 91, 0.5);
+  border-color: #0f172a;
+}
+
+.mini-day.past {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .catalog-grid {
