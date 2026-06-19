@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.15';
+const APP_VERSION = '2026.06.19.16';
 
 type ParsedStayImport = {
   id: string;
@@ -337,6 +337,21 @@ function createSlug(value: string, existingIds: string[]): string {
   }
 
   return slug;
+}
+
+function normalizeSearchText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[׳']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchesSearch(query: string, values: Array<string | number | undefined | null>): boolean {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return true;
+
+  return values.some(value => normalizeSearchText(String(value ?? '')).includes(normalizedQuery));
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -1140,6 +1155,7 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
   const complexAreaOptions = Array.from(new Set([...areaOptions, ...state.complexes.map(complex => complex.area).filter(Boolean)]));
   const areas = ['הכל', ...complexAreaOptions];
   const [area, setArea] = useState(areas[0] ?? 'הכל');
+  const [complexSearch, setComplexSearch] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [selectedOwnerIds, setSelectedOwnerIds] = useState<string[]>([]);
@@ -1156,8 +1172,23 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
     ownerPhone: '',
   });
   const complexes = useMemo(
-    () => state.complexes.filter(complex => complex.active && (area === 'הכל' || complex.area === area)),
-    [area, state.complexes],
+    () => state.complexes.filter(complex =>
+      complex.active &&
+      (area === 'הכל' || complex.area === area) &&
+      matchesSearch(complexSearch, [
+        complex.name,
+        complex.city,
+        complex.area,
+        complex.rooms,
+        complex.maxGuests,
+        complex.ownerName,
+        complex.ownerPhone,
+        complex.salesNote,
+        complex.internalNotes,
+        complex.shabbatNotes,
+      ])
+    ),
+    [area, complexSearch, state.complexes],
   );
   const ownerTargets = useMemo(
     () => complexes.filter(complex => normalizePhone(complex.ownerPhone ?? '')),
@@ -1341,9 +1372,16 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
         </div>
         <div className="form-grid" style={{ marginTop: 12 }}>
           <SelectField label="אזור" value={area} options={areas} onChange={setArea} />
+          <Field label="חיפוש מתחם" value={complexSearch} onChange={setComplexSearch} placeholder="שם, עיר, בעלים, טלפון, הערה..." />
           <Field label="מספר לקוח לשליחה" value={customerPhone} onChange={setCustomerPhone} placeholder="05..." />
           <Field label="אימייל לקוח לשליחה" value={customerEmail} onChange={setCustomerEmail} placeholder="name@example.com" />
         </div>
+        {complexSearch && (
+          <div className="search-summary">
+            <span>{complexes.length} תוצאות לחיפוש “{complexSearch}”</span>
+            <button className="ghost-btn" type="button" onClick={() => setComplexSearch('')}>נקה</button>
+          </div>
+        )}
 
         <div className="bulk-owner-panel">
           <div className="item-head">
@@ -2775,6 +2813,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
 function LeadsView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
   const [dateMode, setDateMode] = useState<'dates' | 'parsha'>('dates');
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [leadSearch, setLeadSearch] = useState('');
   const [form, setForm] = useState({
     customerName: '',
     customerPhone: '',
@@ -2788,6 +2827,21 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     notes: '',
     status: 'new' as LeadStatus,
   });
+  const filteredLeads = useMemo(
+    () => state.leads.filter(lead => matchesSearch(leadSearch, [
+      lead.customerName,
+      lead.customerPhone,
+      lead.parsha,
+      lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : undefined,
+      lead.guests,
+      lead.areaPreference,
+      lead.vacationType,
+      lead.budget,
+      lead.notes,
+      leadStatusLabels[lead.status],
+    ])),
+    [leadSearch, state.leads],
+  );
 
   const resetLeadForm = () => {
     setEditingLeadId(null);
@@ -2961,9 +3015,22 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       </section>
 
       <section className="card">
-        <h2 className="section-title">פניות</h2>
+        <div className="item-head">
+          <h2 className="section-title">פניות</h2>
+          <span className="pill check">{filteredLeads.length}/{state.leads.length}</span>
+        </div>
+        <div className="form-grid" style={{ marginTop: 12 }}>
+          <Field className="full" label="חיפוש לקוח" value={leadSearch} onChange={setLeadSearch} placeholder="שם, טלפון, פרשה, תאריך, סטטוס, הערה..." />
+        </div>
+        {leadSearch && (
+          <div className="search-summary">
+            <span>{filteredLeads.length} תוצאות לחיפוש “{leadSearch}”</span>
+            <button className="ghost-btn" type="button" onClick={() => setLeadSearch('')}>נקה</button>
+          </div>
+        )}
         <div className="list">
-          {state.leads.map(lead => (
+          {filteredLeads.length === 0 && <p className="muted">לא נמצאו פניות מתאימות.</p>}
+          {filteredLeads.map(lead => (
             <div className="list-item" key={lead.id}>
               <div className="item-head">
                 <p className="item-title">{lead.customerName}</p>
