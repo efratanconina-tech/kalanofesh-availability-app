@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.22';
+const APP_VERSION = '2026.06.19.23';
 
 type ParsedStayImport = {
   id: string;
@@ -169,6 +169,18 @@ function getParshaLabel(shabbatDate?: string): string | undefined {
   if (!shabbatDate) return undefined;
   if (shabbatDate < todayYMD()) return undefined;
   return parshaByShabbatDate[shabbatDate];
+}
+
+function getDateParshaLabel(dateStr: string): string | undefined {
+  const date = dateFromYMD(dateStr);
+  const day = date.getDay();
+  if (day === 5) return getParshaLabel(toYMD(addDays(date, 1)));
+  if (day === 6) return getParshaLabel(dateStr);
+  return undefined;
+}
+
+function formatCalendarHebrewDate(dateStr: string): string {
+  return formatHebrewDate(dateStr).split(' ').slice(0, 2).join(' ');
 }
 
 function getStayEvents(state: AppState): StayEvent[] {
@@ -2498,6 +2510,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     const [dateYear, dateMonth, dateDay] = selectedDate.split('-').map(Number);
     return toYMD(new Date(dateYear, dateMonth - 1, dateDay + 1));
   }, [selectedDate]);
+  const selectedParsha = useMemo(() => getDateParshaLabel(selectedDate), [selectedDate]);
   const getDayEnd = (date: Date) => toYMD(new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1));
   const getBlockForDate = (targetComplexId: string, dateStr: string) => {
     const endDate = toYMD(addDays(dateFromYMD(dateStr), 1));
@@ -2754,9 +2767,11 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
           <button className="ghost-btn" type="button" onClick={() => moveMonth(1)}>הבא</button>
         </div>
         <div className="calendar-legend">
-          <span className="legend-dot free" /> פנוי בוודאות
-          <span className="legend-dot busy" /> תפוס בוודאות
-          <span className="legend-dot optional" /> אופציונלי / לא סומן
+          <span className="calendar-selected-date">{formatGregorianDate(selectedDate)} · {formatHebrewDate(selectedDate)}</span>
+          {selectedParsha && <span className="calendar-parsha">{selectedParsha}</span>}
+          <span><span className="legend-dot free" /> פנוי בוודאות</span>
+          <span><span className="legend-dot busy" /> תפוס בוודאות</span>
+          <span><span className="legend-dot optional" /> אופציונלי / לא סומן</span>
         </div>
         <div className="calendar">
           <div className="calendar-head">
@@ -2771,7 +2786,6 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
                 const dayBlocks = blocks.filter(item => hasDateConflict(item, dateStr, dayEnd));
                 const freeCount = dayBlocks.filter(item => item.status === 'available').length;
                 const busyCount = dayBlocks.filter(item => item.status === 'booked').length;
-                const optionalCount = Math.max(visibleComplexes.length - freeCount - busyCount, 0);
                 const className = [
                   'day',
                   isPastDate(dateStr) ? 'past' : '',
@@ -2783,7 +2797,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
                 return (
                   <button className={className} disabled={isPastDate(dateStr)} key={dateStr} type="button" onClick={() => selectDay(day)} title={`בדיקת זמינות: ${formatDateLine(dateStr)}`}>
                     <span>{day.getDate()}</span>
-                    <small>{freeCount} פנוי · {busyCount} תפוס · {optionalCount} ?</small>
+                    <small>{formatCalendarHebrewDate(dateStr)}</small>
                   </button>
                 );
               })}

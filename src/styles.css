@@ -446,15 +446,25 @@ button {
   color: #0f172a;
   display: grid;
   place-items: center;
+  gap: 2px;
+  padding: 4px 2px;
   font-size: 0.78rem;
   cursor: pointer;
   line-height: 1.1;
+}
+
+.day span {
+  font-weight: 900;
 }
 
 .day small {
   color: inherit;
   opacity: 0.72;
   font-size: 0.58rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .day.past {
@@ -496,6 +506,20 @@ button {
   color: #64748b;
   font-size: 0.76rem;
   font-weight: 800;
+}
+
+.calendar-selected-date,
+.calendar-parsha {
+  color: #0f172a;
+  background: rgba(205, 168, 91, 0.14);
+  border: 1px solid rgba(205, 168, 91, 0.22);
+  border-radius: 999px;
+  padding: 5px 10px;
+}
+
+.calendar-parsha {
+  background: rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.1);
 }
 
 .legend-dot {
