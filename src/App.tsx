@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.07';
+const APP_VERSION = '2026.06.19.08';
 
 type ParsedStayImport = {
   id: string;
@@ -2234,8 +2234,6 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   const [rangeForm, setRangeForm] = useState({
     startDate: todayYMD(),
     endDate: '',
-    customerName: '',
-    customerPhone: '',
     note: '',
   });
   const selected = state.complexes.find(complex => complex.id === complexId);
@@ -2300,7 +2298,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       startDate: selectedDate,
       endDate: selectedDateEnd,
       status,
-      note: rangeForm.note || 'סימון מהיר מהבדיקה היומית',
+      note: rangeForm.note || (status === 'booked' ? 'תפוס אצל בעל הוילה' : 'סומן כפנוי'),
     });
   };
 
@@ -2312,12 +2310,10 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       startDate: rangeForm.startDate,
       endDate: rangeForm.endDate,
       status,
-      customerName: rangeForm.customerName || undefined,
-      customerPhone: rangeForm.customerPhone || undefined,
-      note: rangeForm.note || undefined,
+      note: rangeForm.note || (status === 'booked' ? 'תפוס אצל בעל הוילה' : 'סומן כפנוי'),
     });
 
-    setRangeForm(current => ({ ...current, customerName: '', customerPhone: '', note: '' }));
+    setRangeForm(current => ({ ...current, note: '' }));
   };
 
   const deleteBlock = async (blockId: string) => {
@@ -2376,9 +2372,13 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
             min={rangeForm.startDate || todayYMD()}
             onChange={value => setRangeForm(current => ({ ...current, endDate: value }))}
           />
-          <Field label="שם לקוח" value={rangeForm.customerName} onChange={value => setRangeForm(current => ({ ...current, customerName: value }))} />
-          <Field label="טלפון" value={rangeForm.customerPhone} onChange={value => setRangeForm(current => ({ ...current, customerPhone: value }))} />
-          <Field className="full" label="הערה פנימית" value={rangeForm.note} onChange={value => setRangeForm(current => ({ ...current, note: value }))} />
+          <Field
+            className="full"
+            label="הערה פנימית"
+            value={rangeForm.note}
+            onChange={value => setRangeForm(current => ({ ...current, note: value }))}
+            placeholder={status === 'booked' ? 'לדוגמה: תפוס אצל בעל הוילה' : 'לדוגמה: בעל המתחם אישר שפנוי'}
+          />
         </div>
         <div className="actions" style={{ marginTop: 12 }}>
           <button className="primary-btn" type="button" onClick={saveRange}>שמור טווח</button>
