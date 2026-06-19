@@ -195,3 +195,30 @@ on conflict (slug) do update set
   video_url = excluded.video_url,
   gallery_urls = excluded.gallery_urls,
   updated_at = now();
+
+insert into public.availability_blocks (id, complex_id, start_date, end_date, status, note)
+select block_id, complexes.id, start_date, end_date, status, note
+from public.complexes
+cross join (
+  values
+    ('00000000-0000-4000-8000-000000000201'::uuid, '2026-06-21'::date, '2026-06-26'::date, 'booked', 'תפוס בימי חול עד כ״ט תמוז לא כולל'),
+    ('00000000-0000-4000-8000-000000000202'::uuid, '2026-06-28'::date, '2026-07-03'::date, 'booked', 'תפוס בימי חול עד כ״ט תמוז לא כולל'),
+    ('00000000-0000-4000-8000-000000000203'::uuid, '2026-07-05'::date, '2026-07-10'::date, 'booked', 'תפוס בימי חול עד כ״ט תמוז לא כולל'),
+    ('00000000-0000-4000-8000-000000000204'::uuid, '2026-07-12'::date, '2026-07-14'::date, 'booked', 'תפוס בימי חול עד כ״ט תמוז לא כולל'),
+    ('00000000-0000-4000-8000-000000000205'::uuid, '2026-06-19'::date, '2026-06-21'::date, 'booked', 'תפוס בשבתות עד פרשת דברים לא כולל'),
+    ('00000000-0000-4000-8000-000000000206'::uuid, '2026-06-26'::date, '2026-06-28'::date, 'booked', 'תפוס בשבתות עד פרשת דברים לא כולל'),
+    ('00000000-0000-4000-8000-000000000207'::uuid, '2026-07-03'::date, '2026-07-05'::date, 'booked', 'תפוס בשבתות עד פרשת דברים לא כולל'),
+    ('00000000-0000-4000-8000-000000000208'::uuid, '2026-07-10'::date, '2026-07-12'::date, 'booked', 'תפוס בשבתות עד פרשת דברים לא כולל'),
+    ('00000000-0000-4000-8000-000000000209'::uuid, '2026-07-24'::date, '2026-07-26'::date, 'booked', 'תפוס בשבתות אחרי דברים עד פרשת כי תבוא לא כולל'),
+    ('00000000-0000-4000-8000-000000000210'::uuid, '2026-07-31'::date, '2026-08-02'::date, 'booked', 'תפוס בשבתות אחרי דברים עד פרשת כי תבוא לא כולל'),
+    ('00000000-0000-4000-8000-000000000211'::uuid, '2026-08-07'::date, '2026-08-09'::date, 'booked', 'תפוס בשבתות אחרי דברים עד פרשת כי תבוא לא כולל'),
+    ('00000000-0000-4000-8000-000000000212'::uuid, '2026-08-14'::date, '2026-08-16'::date, 'booked', 'תפוס בשבתות אחרי דברים עד פרשת כי תבוא לא כולל'),
+    ('00000000-0000-4000-8000-000000000213'::uuid, '2026-08-21'::date, '2026-08-23'::date, 'booked', 'תפוס בשבתות אחרי דברים עד פרשת כי תבוא לא כולל')
+) as blocks(block_id, start_date, end_date, status, note)
+where complexes.slug = 'boutique-hamayan'
+on conflict (id) do update set
+  start_date = excluded.start_date,
+  end_date = excluded.end_date,
+  status = excluded.status,
+  note = excluded.note,
+  updated_at = now();
