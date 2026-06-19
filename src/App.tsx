@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.13';
+const APP_VERSION = '2026.06.19.14';
 
 type ParsedStayImport = {
   id: string;
@@ -346,6 +346,55 @@ function readFileAsDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+function getComplexMediaUrls(complex: Complex): string[] {
+  return [
+    complex.coverImageUrl,
+    ...splitGallery(complex.galleryUrls),
+    complex.videoUrl,
+  ].filter((url): url is string => Boolean(url?.trim()));
+}
+
+function getExtensionFromMime(mimeType: string): string {
+  const [, subtype = 'bin'] = mimeType.split('/');
+  return subtype.split('+')[0].replace(/[^a-z0-9]/gi, '') || 'bin';
+}
+
+function buildMediaFileName(complex: Complex, mimeType: string, index: number): string {
+  return `${createSlug(complex.name, [])}-${index + 1}.${getExtensionFromMime(mimeType)}`;
+}
+
+function dataUrlToFile(dataUrl: string, fileName: string): File {
+  const [meta, base64 = ''] = dataUrl.split(',');
+  const mimeType = meta.match(/^data:([^;]+);base64$/)?.[1] ?? 'application/octet-stream';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new File([bytes], fileName, { type: mimeType });
+}
+
+async function mediaUrlToFile(url: string, complex: Complex, index: number): Promise<File | null> {
+  if (url.startsWith('data:')) {
+    const mimeType = url.match(/^data:([^;]+);base64,/)?.[1] ?? 'application/octet-stream';
+    return dataUrlToFile(url, buildMediaFileName(complex, mimeType, index));
+  }
+
+  if (!/^https?:\/\//.test(url)) return null;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    if (!blob.type.startsWith('image/') && !blob.type.startsWith('video/')) return null;
+    return new File([blob], buildMediaFileName(complex, blob.type, index), { type: blob.type });
+  } catch {
+    return null;
+  }
 }
 
 function currentImportYear(): number {
@@ -1221,6 +1270,42 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
     const text = encodeURIComponent(bulkOwnerMessage.trim() || 'שלום, רציתי לבדוק זמינות.');
     return `https://wa.me/${phone}?text=${text}`;
   };
+  const shareComplexMedia = async (complex: Complex) => {
+    const mediaUrls = getComplexMediaUrls(complex);
+    if (!mediaUrls.length) {
+      window.alert('אין עדיין תמונות או סרטונים לשיתוף במתחם הזה.');
+      return;
+    }
+
+    const shareApi = navigator as Navigator & {
+      canShare?: (data: { files?: File[] }) => boolean;
+      share?: (data: { title?: string; files?: File[] }) => Promise<void>;
+    };
+    if (!shareApi.share) {
+      window.alert('הדפדפן הזה לא תומך בשיתוף קבצים. נסי לפתוח מהטלפון בדפדפן Chrome/Edge או מתוך האפליקציה המותקנת.');
+      return;
+    }
+
+    const files = (await Promise.all(mediaUrls.map((url, index) => mediaUrlToFile(url, complex, index))))
+      .filter((file): file is File => Boolean(file));
+
+    if (!files.length) {
+      window.alert('לא הצלחתי להכין קבצי מדיה לשיתוף. סרטונים חייבים להיות קובץ ישיר, לא קישור ליוטיוב/אתר.');
+      return;
+    }
+
+    if (shareApi.canShare && !shareApi.canShare({ files })) {
+      window.alert('הטלפון או הדפדפן לא מאפשרים שיתוף של הקבצים האלה יחד. אפשר לנסות פחות קבצים או קבצים קטנים יותר.');
+      return;
+    }
+
+    try {
+      await shareApi.share({ title: `מדיה ${complex.name}`, files });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      window.alert('השיתוף לא הושלם. אפשר לנסות שוב עם פחות תמונות/סרטונים.');
+    }
+  };
   const toggleOwnerSelection = (complexId: string) => {
     setSelectedOwnerIds(current =>
       current.includes(complexId)
@@ -1421,6 +1506,9 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
                 </div>
 
                 <div className="actions">
+                  <button className="secondary-btn" type="button" onClick={() => shareComplexMedia(complex)}>
+                    <Share2 size={16} /> שתף מדיה
+                  </button>
                   <a className="primary-btn" href={getWhatsappHref(complex)} target="_blank" rel="noreferrer">
                     <Share2 size={16} /> שלח ללקוח
                   </a>
