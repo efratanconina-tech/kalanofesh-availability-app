@@ -173,14 +173,16 @@ create policy "active users can manage tasks"
   using (true)
   with check (true);
 
+
+delete from public.complexes
+where slug in ('bresheet', 'pninat-hagalil');
+
 insert into public.complexes (slug, name, area, city, rooms, max_guests, internal_notes, shabbat_notes, cover_image_url, video_url, gallery_urls)
 values
   ('boutique-hamayan', 'בוטיק המעיין', 'ירושלים והסביבה', 'גבעת זאב', 25, 100, 'מתאים במיוחד לשבת חתן וקבוצות גדולות. לבדוק נגישות לפי הרכב האורחים.', 'אולם אוכל מרכזי, מתאים לשומרי שבת, יציאה מאוחרת לפי תאריך.', null, null, null),
   ('achuzah-bahar', 'אחוזה בהר', 'צפון', 'ראש פינה', 15, 50, 'חזק לשבע ברכות ושבתות חתן בינוניות.', 'בית כנסת קרוב, מטבח מהדרין, לבדוק מחיר חגים.', null, null, null),
   ('achuzat-harim', 'אחוזת הרים', 'צפון', 'לא ידוע', 0, 0, '', '', '/media/complexes/achuzat-harim/cover.jpg', '/media/complexes/achuzat-harim/video-tour.mp4', '/media/complexes/achuzat-harim/cover.jpg'),
-  ('icon', 'אייקון', 'מרכז', 'ראשון לציון', 19, 80, 'עירוני ויוקרתי, מתאים לקבוצות שרוצות אולם גדול.', 'פלטה ומיחם, לבדוק פרטי שבת נוספים לפי לקוח.', null, null, null),
-  ('bresheet', 'אחוזת בראשית', 'ירושלים והסביבה', 'גוש עציון', 12, 45, 'טוב למשפחות, מתאים לאווירה שקטה.', 'יציאה בשבת לבדיקה לפי תאריך.', null, null, null),
-  ('pninat-hagalil', 'פנינת הגליל', 'צפון', 'טבריה', 10, 40, 'נוף כנרת, מתאים לחגים ושבתות משפחתיות.', 'בית כנסת קרוב מאוד.', null, null, null)
+  ('icon', 'אייקון', 'מרכז', 'ראשון לציון', 19, 80, 'עירוני ויוקרתי, מתאים לקבוצות שרוצות אולם גדול.', 'פלטה ומיחם, לבדוק פרטי שבת נוספים לפי לקוח.', null, null, null)
 on conflict (slug) do update set
   name = excluded.name,
   area = excluded.area,

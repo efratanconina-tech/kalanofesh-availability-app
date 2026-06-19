@@ -56,32 +56,6 @@ export const seedComplexes: Complex[] = [
     shabbatNotes: 'פלטה ומיחם, לבדוק פרטי שבת נוספים לפי לקוח.',
     active: true,
   },
-  {
-    id: 'bresheet',
-    name: 'אחוזת בראשית',
-    area: 'ירושלים והסביבה',
-    city: 'גוש עציון',
-    rooms: 12,
-    maxGuests: 45,
-    ownerName: '',
-    ownerPhone: '',
-    internalNotes: 'טוב למשפחות, מתאים לאווירה שקטה.',
-    shabbatNotes: 'יציאה בשבת לבדיקה לפי תאריך.',
-    active: true,
-  },
-  {
-    id: 'pninat-hagalil',
-    name: 'פנינת הגליל',
-    area: 'צפון',
-    city: 'טבריה',
-    rooms: 10,
-    maxGuests: 40,
-    ownerName: '',
-    ownerPhone: '',
-    internalNotes: 'נוף כנרת, מתאים לחגים ושבתות משפחתיות.',
-    shabbatNotes: 'בית כנסת קרוב מאוד.',
-    active: true,
-  },
 ];
 
 export const seedState: AppState = {

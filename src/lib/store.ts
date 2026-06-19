@@ -2,6 +2,7 @@ import { seedState } from '../data/seed';
 import type { AppState, AvailabilityBlock, Lead, LeadOffer, Task } from '../types';
 
 const STORAGE_KEY = 'kalanofesh-availability-app-v1';
+const REMOVED_COMPLEX_IDS = new Set(['bresheet', 'pninat-hagalil']);
 
 function now(): string {
   return new Date().toISOString();
@@ -11,18 +12,27 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+export function withoutRemovedComplexes(state: AppState): AppState {
+  return {
+    ...state,
+    complexes: state.complexes.filter(complex => !REMOVED_COMPLEX_IDS.has(complex.id)),
+    availabilityBlocks: state.availabilityBlocks.filter(block => !REMOVED_COMPLEX_IDS.has(block.complexId)),
+    leadOffers: state.leadOffers.filter(offer => !REMOVED_COMPLEX_IDS.has(offer.complexId)),
+  };
+}
+
 export function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return clone(seedState);
+    if (!raw) return withoutRemovedComplexes(clone(seedState));
     const parsed = JSON.parse(raw) as AppState;
-    return {
+    return withoutRemovedComplexes({
       ...clone(seedState),
       ...parsed,
       complexes: parsed.complexes?.length ? parsed.complexes : clone(seedState.complexes),
-    };
+    });
   } catch {
-    return clone(seedState);
+    return withoutRemovedComplexes(clone(seedState));
   }
 }
 

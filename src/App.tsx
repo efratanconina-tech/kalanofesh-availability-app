@@ -26,7 +26,7 @@ import {
   Video,
 } from 'lucide-react';
 import type { AppState, AvailabilityBlock, AvailabilityStatus, Complex, InvoiceStatus, Lead, LeadStatus } from './types';
-import { createAvailabilityBlock, createLead, createTask, hasDateConflict, loadState, saveState } from './lib/store';
+import { createAvailabilityBlock, createLead, createTask, hasDateConflict, loadState, saveState, withoutRemovedComplexes } from './lib/store';
 import { HEBREW_WEEKDAYS_SHORT, formatDateLine, formatGregorianDate, formatHebrewDate, getMonthGrid, isPastDate, toYMD, todayYMD } from './lib/dates';
 import {
   clearSession,
@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.09';
+const APP_VERSION = '2026.06.19.10';
 
 type ParsedStayImport = {
   id: string;
@@ -651,8 +651,9 @@ function App() {
   const [syncStatus, setSyncStatus] = useState('מקומי');
 
   const persist = (nextState: AppState) => {
-    setState(nextState);
-    saveState(nextState);
+    const cleanState = withoutRemovedComplexes(nextState);
+    setState(cleanState);
+    saveState(cleanState);
   };
 
   useEffect(() => {
@@ -663,7 +664,7 @@ function App() {
     fetchCloudState(session)
       .then(cloudState => {
         if (!active) return;
-        const nextState = { ...loadState(), ...cloudState };
+        const nextState = withoutRemovedComplexes({ ...loadState(), ...cloudState });
         setState(nextState);
         saveState(nextState);
         setSyncStatus('מחובר לענן');
