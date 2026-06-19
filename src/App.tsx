@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.06';
+const APP_VERSION = '2026.06.19.07';
 
 type ParsedStayImport = {
   id: string;
@@ -557,6 +557,15 @@ function buildComplexShareText(complex: Complex): string {
     complex.shabbatNotes ? `פרטי שבת: ${complex.shabbatNotes}` : '',
     shareableImages.length ? `תמונות: ${shareableImages.join(' | ')}` : '',
     complex.videoUrl ? `וידאו: ${complex.videoUrl}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+function buildComplexOfferText(complex: Complex, context?: { startDate?: string; endDate?: string; guests?: string; notes?: string }): string {
+  return [
+    buildComplexShareText(complex),
+    context?.startDate && context.endDate ? `תאריכים מבוקשים: ${formatDateLine(context.startDate, context.endDate)}` : '',
+    context?.guests ? `כמות אורחים: ${context.guests}` : '',
+    context?.notes ? `הערות: ${context.notes}` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -1580,6 +1589,17 @@ function QuickLookup({ state, persist, session }: { state: AppState; persist: (s
 
     return `https://wa.me/${phone}?text=${text}`;
   };
+  const getCustomerWhatsappHref = (complex: Complex) => {
+    const phone = normalizePhone(form.customerPhone);
+    const text = encodeURIComponent(buildComplexOfferText(complex, {
+      startDate: form.startDate,
+      endDate: form.endDate,
+      guests: form.guests,
+      notes: form.notes,
+    }));
+
+    return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+  };
 
   return (
     <div className="grid">
@@ -1627,6 +1647,9 @@ function QuickLookup({ state, persist, session }: { state: AppState; persist: (s
                   </div>
                 )}
                 <div className="actions">
+                  <a className="primary-btn" href={getCustomerWhatsappHref(result.complex)} target="_blank" rel="noreferrer">
+                    <Share2 size={16} /> שלח ללקוח
+                  </a>
                   {result.complex.ownerPhone && (
                     <>
                       <a className="secondary-btn" href={`tel:${result.complex.ownerPhone}`}>שיחה לבעל מתחם</a>
