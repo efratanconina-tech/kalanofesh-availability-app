@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.23';
+const APP_VERSION = '2026.06.19.24';
 
 type ParsedStayImport = {
   id: string;
@@ -2002,7 +2002,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       commissionPaid: closeForm.commissionPaid,
       invoiceSent: closeForm.invoiceStatus === 'sent',
       invoiceStatus: closeForm.invoiceStatus,
-      note: closeForm.note || 'סגירה ממסך אירוחים',
+      note: closeForm.note || undefined,
     };
 
     if (session) {
@@ -2210,7 +2210,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       <section className="grid content-grid">
         <div className="card">
           <h2 className="section-title">כניסות קרובות</h2>
-          <div className="list">
+          <div className="list compact-stay-list">
             {upcomingArrivals.length === 0 && <p className="muted">אין כניסות קרובות.</p>}
             {upcomingArrivals.map((event, index) => {
               const block = state.availabilityBlocks.find(item => item.id === event.blockId);
@@ -2226,13 +2226,28 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                       <span>{upcomingArrivals.filter(item => item.date === event.date).length} כניסות</span>
                     </div>
                   )}
-                  <div className="list-item stay-event arrival">
+                  <div className="list-item stay-event arrival compact-arrival">
                     <div className="item-head">
                       <div>
-                        <p className="item-title">כניסה: {block.customerName || 'לקוח ללא שם'}</p>
-                        <span className="muted">{formatDateLine(block.startDate, block.endDate)} · {event.complexName}</span>
+                        <p className="item-title">{block.customerName || 'לקוח ללא שם'}</p>
+                        <span className="muted">{event.complexName} · {formatGregorianDate(block.startDate)}</span>
                       </div>
-                      <span className="pill available">כניסה</span>
+                      <div className="arrival-meta">
+                        {block.commissionAmount && (
+                          <span className={`commission-chip ${block.commissionPaid ? 'paid' : ''}`}>
+                            עמלה {block.commissionAmount}{block.commissionPaid ? ' · שולם' : ''}
+                          </span>
+                        )}
+                        <button
+                          className="ghost-btn icon-only"
+                          type="button"
+                          onClick={() => startEditingArrival(block)}
+                          title="עריכה"
+                          aria-label={`עריכת כניסה של ${block.customerName || 'לקוח'}`}
+                        >
+                          <Pencil size={16} />
+                        </button>
+                      </div>
                     </div>
                     {isEditing && editingArrivalDraft ? (
                       <div className="form-grid">
@@ -2286,28 +2301,13 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                       </div>
                     ) : (
                       <>
-                        {block.customerPhone && <span className="muted">{block.customerPhone}</span>}
-                        {(block.commissionAmount || block.commissionPaid || block.invoiceSent || block.invoiceStatus === 'end_of_stay') && (
-                          <span className="muted">
-                            {[
-                              block.commissionAmount ? `עמלה: ${block.commissionAmount}` : '',
-                              block.commissionPaid ? 'שולם' : '',
-                              block.invoiceStatus === 'end_of_stay' ? 'תזכורת: לשלוח חשבונית בסוף השהות' : '',
-                              block.invoiceSent || block.invoiceStatus === 'sent' ? 'נשלחה חשבונית' : '',
-                            ].filter(Boolean).join(' · ')}
-                          </span>
-                        )}
-                        {block.note && <span className="muted">{block.note}</span>}
-                        <div className="actions lead-actions">
+                        <div className="actions lead-actions compact-icons">
                           {block.customerPhone && (
                             <a className="secondary-btn icon-only" href={`tel:${block.customerPhone}`} title="שיחה" aria-label={`שיחה אל ${block.customerName || 'לקוח'}`}>
                               <Phone size={17} />
                             </a>
                           )}
-                          <button className="ghost-btn" type="button" onClick={() => startEditingArrival(block)}>
-                            <Pencil size={17} />
-                            עריכה
-                          </button>
+                          {block.invoiceStatus === 'end_of_stay' && <span className="tiny-note">חשבונית בסוף השהות</span>}
                         </div>
                       </>
                     )}
