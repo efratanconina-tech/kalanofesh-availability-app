@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.05';
+const APP_VERSION = '2026.06.19.06';
 
 type ParsedStayImport = {
   id: string;
@@ -224,6 +224,35 @@ function findAvailableComplexes(state: AppState, startDate: string, endDate: str
       hasDateConflict(block, startDate, endDate)
     )
   );
+}
+
+function getGuestFit(maxGuests: number, requestedGuests: number) {
+  if (!requestedGuests || requestedGuests <= 0 || !maxGuests) {
+    return { isReasonable: true, label: 'ללא סינון אורחים', score: 0 };
+  }
+
+  const lowerTolerance = Math.max(4, Math.ceil(requestedGuests * 0.15));
+  const upperLimit = Math.max(requestedGuests + 25, Math.ceil(requestedGuests * 1.8));
+  const shortage = requestedGuests - maxGuests;
+  const extraCapacity = maxGuests - requestedGuests;
+
+  if (shortage > lowerTolerance) {
+    return { isReasonable: false, label: `קטן מדי בכ-${shortage} אורחים`, score: -120 - shortage };
+  }
+
+  if (maxGuests > upperLimit) {
+    return { isReasonable: false, label: 'גדול מדי לכמות הזו', score: -80 - Math.round((maxGuests - upperLimit) / 5) };
+  }
+
+  if (shortage > 0) {
+    return { isReasonable: true, label: `גבולי, חסרים כ-${shortage} מקומות`, score: 35 - shortage };
+  }
+
+  if (extraCapacity <= Math.max(6, Math.ceil(requestedGuests * 0.25))) {
+    return { isReasonable: true, label: 'התאמה קרובה', score: 70 - extraCapacity };
+  }
+
+  return { isReasonable: true, label: 'מתאים בטווח סביר', score: 55 - Math.round(extraCapacity / 3) };
 }
 
 function getUpcomingShabbatRanges(months = 3): { startDate: string; endDate: string; labelDate: string }[] {
@@ -1488,6 +1517,7 @@ function QuickLookup({ state, persist, session }: { state: AppState; persist: (s
 
   const results = useMemo(() => {
     if (!form.startDate || !form.endDate || form.endDate < form.startDate || isPastDate(form.startDate)) return [];
+    const requestedGuests = Number(form.guests || 0);
 
     return state.complexes
       .filter(complex => complex.active)
@@ -1495,14 +1525,18 @@ function QuickLookup({ state, persist, session }: { state: AppState; persist: (s
         const conflicts = state.availabilityBlocks.filter(block =>
           block.complexId === complex.id && hasDateConflict(block, form.startDate, form.endDate)
         );
-        const capacityOk = complex.maxGuests >= Number(form.guests || 0);
+        const guestFit = getGuestFit(complex.maxGuests, requestedGuests);
+        const capacityOk = complex.maxGuests >= requestedGuests;
         const areaOk = form.area === 'לא משנה' || complex.area === form.area;
-        const score = (capacityOk ? 40 : 0) + (areaOk ? 30 : 0) + (conflicts.length === 0 ? 30 : 0);
-        return { complex, conflicts, capacityOk, areaOk, score };
+        const score = guestFit.score + (capacityOk ? 20 : 0) + (areaOk ? 30 : 0) + (conflicts.length === 0 ? 30 : 0);
+        return { complex, conflicts, capacityOk, areaOk, guestFit, score };
       })
+      .filter(result => result.guestFit.isReasonable)
       .sort((a, b) => {
         const availabilityOrder = Number(a.conflicts.length > 0) - Number(b.conflicts.length > 0);
         if (availabilityOrder !== 0) return availabilityOrder;
+        const areaOrder = Number(!a.areaOk) - Number(!b.areaOk);
+        if (areaOrder !== 0) return areaOrder;
         return b.score - a.score;
       });
   }, [form.area, form.endDate, form.guests, form.startDate, state.availabilityBlocks, state.complexes]);
@@ -1572,13 +1606,16 @@ function QuickLookup({ state, persist, session }: { state: AppState; persist: (s
       {checked && (
         <section className="card">
           <h2 className="section-title">תוצאות</h2>
+          <p className="muted">מוצגים רק מתחמים בטווח סביר סביב {form.guests || 0} אורחים.</p>
           <div className="list">
+            {results.length === 0 && <p className="muted">לא נמצאו מתחמים בטווח סביר לכמות הזו.</p>}
             {results.map(result => (
               <div className="list-item" key={result.complex.id}>
                 <div className="item-head">
                   <div>
                     <p className="item-title">{result.complex.name}</p>
                     <span className="muted">{result.complex.city} · עד {result.complex.maxGuests} אורחים · {result.complex.rooms} חדרים</span>
+                    <span className="muted">{result.guestFit.label}</span>
                   </div>
                   <span className={`availability-icon ${result.conflicts.length ? 'busy' : 'open'}`} title={result.conflicts.length ? 'יש סימון בלוח לתאריכים האלה' : 'אין סימון בלוח לתאריכים האלה'}>
                     {result.conflicts.length ? <CalendarX size={18} /> : <CalendarCheck size={18} />}
