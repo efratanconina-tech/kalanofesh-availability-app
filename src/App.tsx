@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.12';
+const APP_VERSION = '2026.06.19.13';
 
 type ParsedStayImport = {
   id: string;
@@ -1509,18 +1509,25 @@ function Dashboard({
           </div>
           <div className="list">
             {availableShabbats.length === 0 && <p className="muted">לא נמצאו שבתות פנויות בקרוב.</p>}
-            {availableShabbats.map(shabbat => (
-              <div className="list-item" key={shabbat.startDate}>
-                <div className="item-head">
-                  <p className="item-title">{formatDateLine(shabbat.labelDate)}</p>
-                  <span className="pill available">{shabbat.available.length} פנויים</span>
+            {availableShabbats.map(shabbat => {
+              const parsha = getParshaLabel(shabbat.labelDate);
+
+              return (
+                <div className="list-item" key={shabbat.startDate}>
+                  <div className="item-head">
+                    <div>
+                      <p className="item-title">{formatDateLine(shabbat.labelDate)}</p>
+                      {parsha && <span className="muted">{parsha}</span>}
+                    </div>
+                    <span className="pill available">{shabbat.available.length} פנויים</span>
+                  </div>
+                  <span className="muted">
+                    {shabbat.available.slice(0, 4).map(complex => complex.name).join(', ')}
+                    {shabbat.available.length > 4 ? ` ועוד ${shabbat.available.length - 4}` : ''}
+                  </span>
                 </div>
-                <span className="muted">
-                  {shabbat.available.slice(0, 4).map(complex => complex.name).join(', ')}
-                  {shabbat.available.length > 4 ? ` ועוד ${shabbat.available.length - 4}` : ''}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
