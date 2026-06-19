@@ -191,6 +191,26 @@ export const seedAvailabilityBlocks: AvailabilityBlock[] = [
     createdAt: seedTimestamp,
     updatedAt: seedTimestamp,
   },
+  {
+    id: '00000000-0000-4000-8000-000000000214',
+    complexId: 'boutique-hamayan',
+    startDate: '2026-10-16',
+    endDate: '2026-10-18',
+    status: 'booked',
+    note: 'תפוס בשבת בראשית',
+    createdAt: seedTimestamp,
+    updatedAt: seedTimestamp,
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000215',
+    complexId: 'boutique-hamayan',
+    startDate: '2026-11-20',
+    endDate: '2026-11-22',
+    status: 'booked',
+    note: 'תפוס בשבת תולדות',
+    createdAt: seedTimestamp,
+    updatedAt: seedTimestamp,
+  },
 ];
 
 export const seedState: AppState = {
