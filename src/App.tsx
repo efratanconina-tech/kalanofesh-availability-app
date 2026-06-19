@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.16';
+const APP_VERSION = '2026.06.19.17';
 
 type ParsedStayImport = {
   id: string;
@@ -2635,110 +2635,6 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       </section>
 
       <section className="card">
-        <div className="item-head">
-          <button className="ghost-btn" type="button" onClick={() => moveMonth(-1)}>הקודם</button>
-          <h2 className="section-title">{new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' }).format(new Date(year, month, 1))}</h2>
-          <button className="ghost-btn" type="button" onClick={() => moveMonth(1)}>הבא</button>
-        </div>
-        <div className="calendar-legend">
-          <span className="legend-dot free" /> פנוי בוודאות
-          <span className="legend-dot busy" /> תפוס בוודאות
-          <span className="legend-dot optional" /> אופציונלי / לא סומן
-        </div>
-        <div className="calendar">
-          <div className="calendar-head">
-            {HEBREW_WEEKDAYS_SHORT.map(day => <span key={day}>{day}</span>)}
-          </div>
-          {grid.map((week, weekIndex) => (
-            <div className="calendar-row" key={weekIndex}>
-              {week.map((day, dayIndex) => {
-                if (!day) return <span key={dayIndex} />;
-                const dateStr = toYMD(day);
-                const dayEnd = getDayEnd(day);
-                const dayBlocks = blocks.filter(item => hasDateConflict(item, dateStr, dayEnd));
-                const freeCount = dayBlocks.filter(item => item.status === 'available').length;
-                const busyCount = dayBlocks.filter(item => item.status === 'booked').length;
-                const optionalCount = Math.max(visibleComplexes.length - freeCount - busyCount, 0);
-                const className = [
-                  'day',
-                  isPastDate(dateStr) ? 'past' : '',
-                  dateStr === selectedDate ? 'selected' : '',
-                  busyCount > 0 ? 'busy' : '',
-                  busyCount === 0 && freeCount > 0 ? 'free' : '',
-                  busyCount === 0 && freeCount === 0 ? 'pending' : '',
-                ].filter(Boolean).join(' ');
-                return (
-                  <button className={className} disabled={isPastDate(dateStr)} key={dateStr} type="button" onClick={() => selectDay(day)} title={`בדיקת זמינות: ${formatDateLine(dateStr)}`}>
-                    <span>{day.getDate()}</span>
-                    <small>{freeCount} פנוי · {busyCount} תפוס · {optionalCount} ?</small>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="item-head">
-          <div>
-            <h2 className="section-title">מה קורה בתאריך שנבחר</h2>
-            <p className="muted">{formatDateLine(selectedDate)}</p>
-          </div>
-          <div className="actions">
-            <span className="pill available">{selectedSummary.free.length} פנויים</span>
-            <span className="pill booked">{selectedSummary.busy.length} תפוסים</span>
-            <span className="pill check">{selectedSummary.optional.length} אופציונליים</span>
-          </div>
-        </div>
-        <div className="availability-grid">
-          {dailyAvailability.map(({ complex, block, bucket }) => {
-            const isFree = bucket === 'free';
-            const isBusy = bucket === 'busy';
-
-            return (
-              <div className={`availability-item ${isFree ? 'free' : isBusy ? 'blocked' : 'optional'}`} key={complex.id}>
-                <div className="item-head">
-                  <div>
-                    <p className="item-title">{complex.name}</p>
-                    <span className="muted">{complex.city} · עד {complex.maxGuests} אורחים · {complex.rooms} חדרים</span>
-                  </div>
-                  <span className={`pill ${isFree ? 'available' : isBusy ? 'booked' : 'check'}`}>
-                    {isFree ? 'פנוי בוודאות' : isBusy ? 'תפוס בוודאות' : block ? statusLabels[block.status] : 'אופציונלי'}
-                  </span>
-                </div>
-                {block?.customerName && <span className="muted">{block.customerName}{block.customerPhone ? ` · ${block.customerPhone}` : ''}</span>}
-                {block?.note && <span className="muted">{block.note}</span>}
-                <div className="actions">
-                  <button className="secondary-btn" type="button" onClick={() => markComplexDate(complex.id, 'available')}>
-                    פנוי
-                  </button>
-                  <button className="primary-btn" type="button" onClick={() => markComplexDate(complex.id, 'booked')}>
-                    תפוס
-                  </button>
-                  <button
-                    className="ghost-btn"
-                    type="button"
-                    onClick={() => {
-                      setComplexId(complex.id);
-                      setRangeForm(current => ({
-                        ...current,
-                        startDate: selectedDate,
-                        endDate: selectedDateEnd,
-                      }));
-                    }}
-                  >
-                    בחר לטווח
-                  </button>
-                  {complex.ownerPhone && <a className="ghost-btn" href={`tel:${complex.ownerPhone}`}>התקשר לבעל מתחם</a>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="card">
         <h2 className="section-title">לוח לפי מתחם</h2>
         <div className="complex-calendar-list">
           {visibleComplexes.map(complex => (
@@ -2803,6 +2699,96 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
                 </button>
               </div>
             </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="item-head">
+          <button className="ghost-btn" type="button" onClick={() => moveMonth(-1)}>הקודם</button>
+          <h2 className="section-title">{new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' }).format(new Date(year, month, 1))}</h2>
+          <button className="ghost-btn" type="button" onClick={() => moveMonth(1)}>הבא</button>
+        </div>
+        <div className="calendar-legend">
+          <span className="legend-dot free" /> פנוי בוודאות
+          <span className="legend-dot busy" /> תפוס בוודאות
+          <span className="legend-dot optional" /> אופציונלי / לא סומן
+        </div>
+        <div className="calendar">
+          <div className="calendar-head">
+            {HEBREW_WEEKDAYS_SHORT.map(day => <span key={day}>{day}</span>)}
+          </div>
+          {grid.map((week, weekIndex) => (
+            <div className="calendar-row" key={weekIndex}>
+              {week.map((day, dayIndex) => {
+                if (!day) return <span key={dayIndex} />;
+                const dateStr = toYMD(day);
+                const dayEnd = getDayEnd(day);
+                const dayBlocks = blocks.filter(item => hasDateConflict(item, dateStr, dayEnd));
+                const freeCount = dayBlocks.filter(item => item.status === 'available').length;
+                const busyCount = dayBlocks.filter(item => item.status === 'booked').length;
+                const optionalCount = Math.max(visibleComplexes.length - freeCount - busyCount, 0);
+                const className = [
+                  'day',
+                  isPastDate(dateStr) ? 'past' : '',
+                  dateStr === selectedDate ? 'selected' : '',
+                  busyCount > 0 ? 'busy' : '',
+                  busyCount === 0 && freeCount > 0 ? 'free' : '',
+                  busyCount === 0 && freeCount === 0 ? 'pending' : '',
+                ].filter(Boolean).join(' ');
+                return (
+                  <button className={className} disabled={isPastDate(dateStr)} key={dateStr} type="button" onClick={() => selectDay(day)} title={`בדיקת זמינות: ${formatDateLine(dateStr)}`}>
+                    <span>{day.getDate()}</span>
+                    <small>{freeCount} פנוי · {busyCount} תפוס · {optionalCount} ?</small>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="item-head">
+          <div>
+            <h2 className="section-title">מקומות פנויים בתאריך שנבחר</h2>
+            <p className="muted">{formatDateLine(selectedDate)}</p>
+          </div>
+          <span className="pill available">{selectedSummary.free.length} פנויים</span>
+        </div>
+        <div className="availability-grid">
+          {selectedSummary.free.length === 0 && <p className="muted">אין מתחמים שסומנו כפנויים בוודאות בתאריך הזה.</p>}
+          {selectedSummary.free.map(({ complex, block }) => (
+              <div className="availability-item free" key={complex.id}>
+                <div className="item-head">
+                  <div>
+                    <p className="item-title">{complex.name}</p>
+                    <span className="muted">{complex.city} · עד {complex.maxGuests} אורחים · {complex.rooms} חדרים</span>
+                  </div>
+                  <span className="pill available">פנוי בוודאות</span>
+                </div>
+                {block?.note && <span className="muted">{block.note}</span>}
+                <div className="actions">
+                  <button className="primary-btn" type="button" onClick={() => markComplexDate(complex.id, 'booked')}>
+                    סמן כתפוס
+                  </button>
+                  <button
+                    className="ghost-btn"
+                    type="button"
+                    onClick={() => {
+                      setComplexId(complex.id);
+                      setRangeForm(current => ({
+                        ...current,
+                        startDate: selectedDate,
+                        endDate: selectedDateEnd,
+                      }));
+                    }}
+                  >
+                    בחר לטווח
+                  </button>
+                  {complex.ownerPhone && <a className="ghost-btn" href={`tel:${complex.ownerPhone}`}>התקשר לבעל מתחם</a>}
+                </div>
+              </div>
           ))}
         </div>
       </section>
