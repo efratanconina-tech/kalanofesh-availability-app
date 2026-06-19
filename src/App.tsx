@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.03';
+const APP_VERSION = '2026.06.19.04';
 
 type ParsedStayImport = {
   id: string;
@@ -1914,97 +1914,106 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
           <h2 className="section-title">כניסות קרובות</h2>
           <div className="list">
             {upcomingArrivals.length === 0 && <p className="muted">אין כניסות קרובות.</p>}
-            {upcomingArrivals.map(event => {
+            {upcomingArrivals.map((event, index) => {
               const block = state.availabilityBlocks.find(item => item.id === event.blockId);
               if (!block) return <StayEventItem event={event} key={event.id} />;
               const isEditing = editingArrivalId === block.id;
+              const isNewDateGroup = index === 0 || upcomingArrivals[index - 1]?.date !== event.date;
 
               return (
-                <div className="list-item stay-event arrival" key={event.id}>
-                  <div className="item-head">
-                    <div>
-                      <p className="item-title">כניסה: {block.customerName || 'לקוח ללא שם'}</p>
-                      <span className="muted">{formatDateLine(block.startDate, block.endDate)} · {event.complexName}</span>
+                <div className="arrival-date-group" key={event.id}>
+                  {isNewDateGroup && (
+                    <div className="date-group-label">
+                      {formatGregorianDate(event.date)}
+                      <span>{upcomingArrivals.filter(item => item.date === event.date).length} כניסות</span>
                     </div>
-                    <span className="pill available">כניסה</span>
-                  </div>
-                  {isEditing && editingArrivalDraft ? (
-                    <div className="form-grid">
-                      <SelectField
-                        label="מתחם"
-                        value={editingArrivalDraft.complexId}
-                        options={activeComplexes.map(complex => complex.id)}
-                        labels={Object.fromEntries(activeComplexes.map(complex => [complex.id, complex.name]))}
-                        onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, complexId: value }) : current)}
-                      />
-                      <DateField
-                        label="כניסה"
-                        value={editingArrivalDraft.startDate}
-                        min=""
-                        onChange={value => setEditingArrivalDraft(current => current ? ({
-                          ...current,
-                          startDate: value,
-                          endDate: current.endDate <= value ? '' : current.endDate,
-                        }) : current)}
-                      />
-                      <DateField
-                        label="יציאה"
-                        value={editingArrivalDraft.endDate}
-                        min={editingArrivalDraft.startDate}
-                        onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, endDate: value }) : current)}
-                      />
-                      <Field label="שם לקוח" value={editingArrivalDraft.customerName ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, customerName: value }) : current)} />
-                      <Field label="טלפון" value={editingArrivalDraft.customerPhone ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, customerPhone: value }) : current)} />
-                      <Field label="עמלה" value={editingArrivalDraft.commissionAmount ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, commissionAmount: value }) : current)} />
-                      <label className="owner-select">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(editingArrivalDraft.commissionPaid)}
-                          onChange={change => setEditingArrivalDraft(current => current ? ({ ...current, commissionPaid: change.target.checked }) : current)}
-                        />
-                        <span>שולם</span>
-                      </label>
-                      <SelectField
-                        label="חשבונית"
-                        value={editingArrivalDraft.invoiceStatus ?? 'not_sent'}
-                        options={Object.keys(invoiceStatusLabels)}
-                        labels={invoiceStatusLabels}
-                        onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, invoiceStatus: value as InvoiceStatus }) : current)}
-                      />
-                      <Field className="full" label="הערה" value={editingArrivalDraft.note ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, note: value }) : current)} />
-                      {editingArrivalError && <p className="form-error full">{editingArrivalError}</p>}
-                      <div className="actions full">
-                        <button className="primary-btn" type="button" onClick={() => saveEditingArrival(block)}>שמור שינויים</button>
-                        <button className="ghost-btn" type="button" onClick={cancelEditingArrival}>ביטול</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {block.customerPhone && <span className="muted">{block.customerPhone}</span>}
-                      {(block.commissionAmount || block.commissionPaid || block.invoiceSent || block.invoiceStatus === 'end_of_stay') && (
-                        <span className="muted">
-                          {[
-                            block.commissionAmount ? `עמלה: ${block.commissionAmount}` : '',
-                            block.commissionPaid ? 'שולם' : '',
-                            block.invoiceStatus === 'end_of_stay' ? 'תזכורת: לשלוח חשבונית בסוף השהות' : '',
-                            block.invoiceSent || block.invoiceStatus === 'sent' ? 'נשלחה חשבונית' : '',
-                          ].filter(Boolean).join(' · ')}
-                        </span>
-                      )}
-                      {block.note && <span className="muted">{block.note}</span>}
-                      <div className="actions lead-actions">
-                        {block.customerPhone && (
-                          <a className="secondary-btn icon-only" href={`tel:${block.customerPhone}`} title="שיחה" aria-label={`שיחה אל ${block.customerName || 'לקוח'}`}>
-                            <Phone size={17} />
-                          </a>
-                        )}
-                        <button className="ghost-btn" type="button" onClick={() => startEditingArrival(block)}>
-                          <Pencil size={17} />
-                          עריכה
-                        </button>
-                      </div>
-                    </>
                   )}
+                  <div className="list-item stay-event arrival">
+                    <div className="item-head">
+                      <div>
+                        <p className="item-title">כניסה: {block.customerName || 'לקוח ללא שם'}</p>
+                        <span className="muted">{formatDateLine(block.startDate, block.endDate)} · {event.complexName}</span>
+                      </div>
+                      <span className="pill available">כניסה</span>
+                    </div>
+                    {isEditing && editingArrivalDraft ? (
+                      <div className="form-grid">
+                        <SelectField
+                          label="מתחם"
+                          value={editingArrivalDraft.complexId}
+                          options={activeComplexes.map(complex => complex.id)}
+                          labels={Object.fromEntries(activeComplexes.map(complex => [complex.id, complex.name]))}
+                          onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, complexId: value }) : current)}
+                        />
+                        <DateField
+                          label="כניסה"
+                          value={editingArrivalDraft.startDate}
+                          min=""
+                          onChange={value => setEditingArrivalDraft(current => current ? ({
+                            ...current,
+                            startDate: value,
+                            endDate: current.endDate <= value ? '' : current.endDate,
+                          }) : current)}
+                        />
+                        <DateField
+                          label="יציאה"
+                          value={editingArrivalDraft.endDate}
+                          min={editingArrivalDraft.startDate}
+                          onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, endDate: value }) : current)}
+                        />
+                        <Field label="שם לקוח" value={editingArrivalDraft.customerName ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, customerName: value }) : current)} />
+                        <Field label="טלפון" value={editingArrivalDraft.customerPhone ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, customerPhone: value }) : current)} />
+                        <Field label="עמלה" value={editingArrivalDraft.commissionAmount ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, commissionAmount: value }) : current)} />
+                        <label className="owner-select">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(editingArrivalDraft.commissionPaid)}
+                            onChange={change => setEditingArrivalDraft(current => current ? ({ ...current, commissionPaid: change.target.checked }) : current)}
+                          />
+                          <span>שולם</span>
+                        </label>
+                        <SelectField
+                          label="חשבונית"
+                          value={editingArrivalDraft.invoiceStatus ?? 'not_sent'}
+                          options={Object.keys(invoiceStatusLabels)}
+                          labels={invoiceStatusLabels}
+                          onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, invoiceStatus: value as InvoiceStatus }) : current)}
+                        />
+                        <Field className="full" label="הערה" value={editingArrivalDraft.note ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, note: value }) : current)} />
+                        {editingArrivalError && <p className="form-error full">{editingArrivalError}</p>}
+                        <div className="actions full">
+                          <button className="primary-btn" type="button" onClick={() => saveEditingArrival(block)}>שמור שינויים</button>
+                          <button className="ghost-btn" type="button" onClick={cancelEditingArrival}>ביטול</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {block.customerPhone && <span className="muted">{block.customerPhone}</span>}
+                        {(block.commissionAmount || block.commissionPaid || block.invoiceSent || block.invoiceStatus === 'end_of_stay') && (
+                          <span className="muted">
+                            {[
+                              block.commissionAmount ? `עמלה: ${block.commissionAmount}` : '',
+                              block.commissionPaid ? 'שולם' : '',
+                              block.invoiceStatus === 'end_of_stay' ? 'תזכורת: לשלוח חשבונית בסוף השהות' : '',
+                              block.invoiceSent || block.invoiceStatus === 'sent' ? 'נשלחה חשבונית' : '',
+                            ].filter(Boolean).join(' · ')}
+                          </span>
+                        )}
+                        {block.note && <span className="muted">{block.note}</span>}
+                        <div className="actions lead-actions">
+                          {block.customerPhone && (
+                            <a className="secondary-btn icon-only" href={`tel:${block.customerPhone}`} title="שיחה" aria-label={`שיחה אל ${block.customerName || 'לקוח'}`}>
+                              <Phone size={17} />
+                            </a>
+                          )}
+                          <button className="ghost-btn" type="button" onClick={() => startEditingArrival(block)}>
+                            <Pencil size={17} />
+                            עריכה
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -2027,12 +2036,21 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                   if (!day) return <span key={dayIndex} />;
                   const dateStr = toYMD(day);
                   const dayEvents = eventsByDate[dateStr] ?? [];
+                  const arrivalEvents = dayEvents.filter(event => event.type === 'arrival');
+                  const departureEvents = dayEvents.filter(event => event.type === 'departure');
                   return (
                     <div className={`day stay-day ${dayEvents.length ? 'has-stays' : ''}`} key={dateStr}>
                       <span>{day.getDate()}</span>
-                      {dayEvents.slice(0, 2).map(event => (
-                        <small className={event.type} key={event.id}>{event.type === 'arrival' ? 'כניסה' : 'יציאה'}</small>
-                      ))}
+                      {arrivalEvents.length > 0 && (
+                        <small className="arrival" title={arrivalEvents.map(event => event.complexName).join(', ')}>
+                          {arrivalEvents.length === 1 ? `כניסה: ${arrivalEvents[0].complexName}` : `${arrivalEvents.length} כניסות`}
+                        </small>
+                      )}
+                      {departureEvents.length > 0 && (
+                        <small className="departure" title={departureEvents.map(event => event.complexName).join(', ')}>
+                          {departureEvents.length === 1 ? `יציאה: ${departureEvents[0].complexName}` : `${departureEvents.length} יציאות`}
+                        </small>
+                      )}
                     </div>
                   );
                 })}

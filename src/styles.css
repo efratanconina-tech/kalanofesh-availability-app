@@ -488,6 +488,9 @@ button {
   opacity: 1;
   font-size: 0.54rem;
   font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stay-day small.arrival {
@@ -506,6 +509,27 @@ button {
 
 .stay-event.departure {
   border-color: rgba(245, 158, 11, 0.22);
+}
+
+.arrival-date-group {
+  display: grid;
+  gap: 8px;
+}
+
+.date-group-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 2px 0 -2px;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.date-group-label span {
+  color: #15803d;
+  font-size: 0.72rem;
 }
 
 .availability-grid {
