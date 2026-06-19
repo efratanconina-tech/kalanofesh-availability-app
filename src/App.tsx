@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.02';
+const APP_VERSION = '2026.06.19.03';
 
 type ParsedStayImport = {
   id: string;
@@ -84,6 +84,11 @@ type StayEvent = {
   status: AvailabilityStatus;
   note?: string;
 };
+
+type ArrivalEditDraft = Pick<
+  AvailabilityBlock,
+  'complexId' | 'startDate' | 'endDate' | 'customerName' | 'customerPhone' | 'commissionAmount' | 'commissionPaid' | 'invoiceStatus' | 'note'
+>;
 
 const statusLabels: Record<AvailabilityStatus, string> = {
   available: 'פנוי בוודאות',
@@ -1623,6 +1628,8 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   const [closeFormError, setCloseFormError] = useState('');
   const [closeFormTouched, setCloseFormTouched] = useState(false);
   const [editingArrivalId, setEditingArrivalId] = useState<string | null>(null);
+  const [editingArrivalDraft, setEditingArrivalDraft] = useState<ArrivalEditDraft | null>(null);
+  const [editingArrivalError, setEditingArrivalError] = useState('');
   const [notificationStatus, setNotificationStatus] = useState(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
@@ -1761,6 +1768,60 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     }
   };
 
+  const startEditingArrival = (block: AvailabilityBlock) => {
+    setEditingArrivalId(block.id);
+    setEditingArrivalError('');
+    setEditingArrivalDraft({
+      complexId: block.complexId,
+      startDate: block.startDate,
+      endDate: block.endDate,
+      customerName: block.customerName ?? '',
+      customerPhone: block.customerPhone ?? '',
+      commissionAmount: block.commissionAmount ?? '',
+      commissionPaid: Boolean(block.commissionPaid),
+      invoiceStatus: block.invoiceStatus ?? (block.invoiceSent ? 'sent' : 'not_sent'),
+      note: block.note ?? '',
+    });
+  };
+
+  const cancelEditingArrival = () => {
+    setEditingArrivalId(null);
+    setEditingArrivalDraft(null);
+    setEditingArrivalError('');
+  };
+
+  const saveEditingArrival = async (block: AvailabilityBlock) => {
+    if (!editingArrivalDraft) return;
+    if (!editingArrivalDraft.complexId) {
+      setEditingArrivalError('צריך לבחור מתחם.');
+      return;
+    }
+    if (!editingArrivalDraft.startDate || !editingArrivalDraft.endDate) {
+      setEditingArrivalError('צריך למלא תאריך כניסה ויציאה.');
+      return;
+    }
+    if (editingArrivalDraft.endDate <= editingArrivalDraft.startDate) {
+      setEditingArrivalError('תאריך היציאה חייב להיות אחרי תאריך הכניסה.');
+      return;
+    }
+
+    const patch: Partial<AvailabilityBlock> = {
+      complexId: editingArrivalDraft.complexId,
+      startDate: editingArrivalDraft.startDate,
+      endDate: editingArrivalDraft.endDate,
+      customerName: editingArrivalDraft.customerName?.trim() || undefined,
+      customerPhone: editingArrivalDraft.customerPhone?.trim() || undefined,
+      commissionAmount: editingArrivalDraft.commissionAmount?.trim() || undefined,
+      commissionPaid: Boolean(editingArrivalDraft.commissionPaid),
+      invoiceStatus: editingArrivalDraft.invoiceStatus ?? 'not_sent',
+      invoiceSent: editingArrivalDraft.invoiceStatus === 'sent',
+      note: editingArrivalDraft.note?.trim() || undefined,
+    };
+
+    await updateClosureBlock(block, patch);
+    cancelEditingArrival();
+  };
+
   return (
     <div className="grid">
       <section className="card">
@@ -1867,31 +1928,54 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                     </div>
                     <span className="pill available">כניסה</span>
                   </div>
-                  {isEditing ? (
+                  {isEditing && editingArrivalDraft ? (
                     <div className="form-grid">
-                      <DateField label="כניסה" value={block.startDate} min="" onChange={value => updateClosureBlock(block, { startDate: value })} />
-                      <DateField label="יציאה" value={block.endDate} min={block.startDate} onChange={value => updateClosureBlock(block, { endDate: value })} />
-                      <Field label="שם לקוח" value={block.customerName ?? ''} onChange={value => updateClosureBlock(block, { customerName: value })} />
-                      <Field label="טלפון" value={block.customerPhone ?? ''} onChange={value => updateClosureBlock(block, { customerPhone: value })} />
-                      <Field label="עמלה" value={block.commissionAmount ?? ''} onChange={value => updateClosureBlock(block, { commissionAmount: value })} />
+                      <SelectField
+                        label="מתחם"
+                        value={editingArrivalDraft.complexId}
+                        options={activeComplexes.map(complex => complex.id)}
+                        labels={Object.fromEntries(activeComplexes.map(complex => [complex.id, complex.name]))}
+                        onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, complexId: value }) : current)}
+                      />
+                      <DateField
+                        label="כניסה"
+                        value={editingArrivalDraft.startDate}
+                        min=""
+                        onChange={value => setEditingArrivalDraft(current => current ? ({
+                          ...current,
+                          startDate: value,
+                          endDate: current.endDate <= value ? '' : current.endDate,
+                        }) : current)}
+                      />
+                      <DateField
+                        label="יציאה"
+                        value={editingArrivalDraft.endDate}
+                        min={editingArrivalDraft.startDate}
+                        onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, endDate: value }) : current)}
+                      />
+                      <Field label="שם לקוח" value={editingArrivalDraft.customerName ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, customerName: value }) : current)} />
+                      <Field label="טלפון" value={editingArrivalDraft.customerPhone ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, customerPhone: value }) : current)} />
+                      <Field label="עמלה" value={editingArrivalDraft.commissionAmount ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, commissionAmount: value }) : current)} />
                       <label className="owner-select">
                         <input
                           type="checkbox"
-                          checked={Boolean(block.commissionPaid)}
-                          onChange={change => updateClosureBlock(block, { commissionPaid: change.target.checked })}
+                          checked={Boolean(editingArrivalDraft.commissionPaid)}
+                          onChange={change => setEditingArrivalDraft(current => current ? ({ ...current, commissionPaid: change.target.checked }) : current)}
                         />
                         <span>שולם</span>
                       </label>
                       <SelectField
                         label="חשבונית"
-                        value={block.invoiceStatus ?? (block.invoiceSent ? 'sent' : 'not_sent')}
+                        value={editingArrivalDraft.invoiceStatus ?? 'not_sent'}
                         options={Object.keys(invoiceStatusLabels)}
                         labels={invoiceStatusLabels}
-                        onChange={value => updateClosureBlock(block, { invoiceStatus: value as InvoiceStatus, invoiceSent: value === 'sent' })}
+                        onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, invoiceStatus: value as InvoiceStatus }) : current)}
                       />
-                      <Field className="full" label="הערה" value={block.note ?? ''} onChange={value => updateClosureBlock(block, { note: value })} />
+                      <Field className="full" label="הערה" value={editingArrivalDraft.note ?? ''} onChange={value => setEditingArrivalDraft(current => current ? ({ ...current, note: value }) : current)} />
+                      {editingArrivalError && <p className="form-error full">{editingArrivalError}</p>}
                       <div className="actions full">
-                        <button className="primary-btn" type="button" onClick={() => setEditingArrivalId(null)}>סיים עריכה</button>
+                        <button className="primary-btn" type="button" onClick={() => saveEditingArrival(block)}>שמור שינויים</button>
+                        <button className="ghost-btn" type="button" onClick={cancelEditingArrival}>ביטול</button>
                       </div>
                     </div>
                   ) : (
@@ -1914,8 +1998,9 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                             <Phone size={17} />
                           </a>
                         )}
-                        <button className="ghost-btn icon-only" type="button" onClick={() => setEditingArrivalId(block.id)} title="עריכה" aria-label="עריכת כניסה">
+                        <button className="ghost-btn" type="button" onClick={() => startEditingArrival(block)}>
                           <Pencil size={17} />
+                          עריכה
                         </button>
                       </div>
                     </>
