@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.19';
+const APP_VERSION = '2026.06.19.20';
 
 type ParsedStayImport = {
   id: string;
@@ -2814,18 +2814,21 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     status: 'new' as LeadStatus,
   });
   const filteredLeads = useMemo(
-    () => state.leads.filter(lead => matchesSearch(leadSearch, [
-      lead.customerName,
-      lead.customerPhone,
-      lead.parsha,
-      lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : undefined,
-      lead.guests,
-      lead.areaPreference,
-      lead.vacationType,
-      lead.budget,
-      lead.notes,
-      leadStatusLabels[lead.status],
-    ])),
+    () => state.leads
+      .filter(lead => matchesSearch(leadSearch, [
+        lead.customerName,
+        lead.customerPhone,
+        lead.parsha,
+        lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : undefined,
+        lead.createdAt ? formatGregorianDate(lead.createdAt.slice(0, 10)) : undefined,
+        lead.guests,
+        lead.areaPreference,
+        lead.vacationType,
+        lead.budget,
+        lead.notes,
+        leadStatusLabels[lead.status],
+      ]))
+      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
     [leadSearch, state.leads],
   );
 
@@ -3022,6 +3025,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
                 <p className="item-title">{lead.customerName}</p>
                 <span className="pill offered">{leadStatusLabels[lead.status]}</span>
               </div>
+              <span className="muted">נפתחה: {lead.createdAt ? formatGregorianDate(lead.createdAt.slice(0, 10)) : 'לא ידוע'}</span>
               <span className="muted">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
               <span className="muted">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}</span>
               {lead.notes && <span className="muted">{lead.notes}</span>}
