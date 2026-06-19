@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.21';
+const APP_VERSION = '2026.06.19.22';
 
 type ParsedStayImport = {
   id: string;
@@ -3067,11 +3067,16 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
             <div className="list-item" key={lead.id}>
               <div className="item-head">
                 <p className="item-title">{lead.customerName}</p>
-                <span className="pill offered">{leadStatusLabels[lead.status]}</span>
+                <div className="actions lead-meta-pills">
+                  <span className={`pill budget ${lead.budget ? '' : 'missing'}`}>
+                    {lead.budget ? `תקציב: ${lead.budget}` : 'ללא תקציב'}
+                  </span>
+                  <span className="pill offered">{leadStatusLabels[lead.status]}</span>
+                </div>
               </div>
               <span className="muted">נפתחה: {lead.createdAt ? formatGregorianDate(lead.createdAt.slice(0, 10)) : 'לא ידוע'}</span>
               <span className="muted">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
-              <span className="muted">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}</span>
+              <span className="muted">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}{lead.budget ? ` · תקציב: ${lead.budget}` : ''}</span>
               {lead.notes && <span className="muted">{lead.notes}</span>}
               <div className="actions lead-actions">
                 <a className="secondary-btn icon-only" href={`tel:${lead.customerPhone}`} title="שיחה" aria-label={`שיחה אל ${lead.customerName}`}>
