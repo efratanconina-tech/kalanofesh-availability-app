@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.19.04';
+const APP_VERSION = '2026.06.19.05';
 
 type ParsedStayImport = {
   id: string;
@@ -1487,7 +1487,7 @@ function QuickLookup({ state, persist, session }: { state: AppState; persist: (s
   const [checked, setChecked] = useState(false);
 
   const results = useMemo(() => {
-    if (!form.startDate || !form.endDate || form.endDate <= form.startDate || isPastDate(form.startDate)) return [];
+    if (!form.startDate || !form.endDate || form.endDate < form.startDate || isPastDate(form.startDate)) return [];
 
     return state.complexes
       .filter(complex => complex.active)
@@ -1552,7 +1552,7 @@ function QuickLookup({ state, persist, session }: { state: AppState; persist: (s
       <section className="card">
         <h2 className="section-title">בדיקת זמינות מהירה</h2>
         <div className="form-grid">
-          <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate <= value ? '' : form.endDate })} />
+          <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate < value ? '' : form.endDate })} />
           <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
           <Field label="אורחים" value={form.guests} type="number" min="1" onChange={value => setForm({ ...form, guests: value })} />
           <SelectField label="אזור" value={form.area} options={areaPreferenceOptions} onChange={value => setForm({ ...form, area: value })} />
@@ -1661,8 +1661,8 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     if (!closeForm.complexId) errors.complexId = 'צריך לבחור מתחם.';
     if (!closeForm.startDate) errors.startDate = 'צריך למלא תאריך כניסה.';
     if (!closeForm.endDate) errors.endDate = 'צריך למלא תאריך יציאה.';
-    if (closeForm.startDate && closeForm.endDate && closeForm.endDate <= closeForm.startDate) {
-      errors.endDate = 'תאריך היציאה חייב להיות אחרי תאריך הכניסה.';
+    if (closeForm.startDate && closeForm.endDate && closeForm.endDate < closeForm.startDate) {
+      errors.endDate = 'תאריך היציאה לא יכול להיות לפני תאריך הכניסה.';
     }
     return errors;
   }, [activeComplexes.length, closeForm.complexId, closeForm.endDate, closeForm.startDate]);
@@ -1800,8 +1800,8 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       setEditingArrivalError('צריך למלא תאריך כניסה ויציאה.');
       return;
     }
-    if (editingArrivalDraft.endDate <= editingArrivalDraft.startDate) {
-      setEditingArrivalError('תאריך היציאה חייב להיות אחרי תאריך הכניסה.');
+    if (editingArrivalDraft.endDate < editingArrivalDraft.startDate) {
+      setEditingArrivalError('תאריך היציאה לא יכול להיות לפני תאריך הכניסה.');
       return;
     }
 
@@ -1854,7 +1854,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
               onChange={value => setCloseForm(current => ({
                 ...current,
                 startDate: value,
-                endDate: current.endDate <= value ? '' : current.endDate,
+                endDate: current.endDate < value ? '' : current.endDate,
               }))}
               error={showCloseFormErrors ? closeFormValidation.startDate : undefined}
             />
@@ -1952,7 +1952,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                           onChange={value => setEditingArrivalDraft(current => current ? ({
                             ...current,
                             startDate: value,
-                            endDate: current.endDate <= value ? '' : current.endDate,
+                            endDate: current.endDate < value ? '' : current.endDate,
                           }) : current)}
                         />
                         <DateField
@@ -2245,7 +2245,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   };
 
   const saveRange = async () => {
-    if (!rangeForm.startDate || !rangeForm.endDate || rangeForm.endDate <= rangeForm.startDate || isPastDate(rangeForm.startDate)) return;
+    if (!rangeForm.startDate || !rangeForm.endDate || rangeForm.endDate < rangeForm.startDate || isPastDate(rangeForm.startDate)) return;
 
     await saveBlock({
       complexId,
@@ -2307,7 +2307,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
             onChange={value => setRangeForm(current => ({
               ...current,
               startDate: value,
-              endDate: current.endDate <= value ? '' : current.endDate,
+              endDate: current.endDate < value ? '' : current.endDate,
             }))}
           />
           <DateField
@@ -2473,7 +2473,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
   };
 
   const saveLead = async () => {
-    const hasDates = Boolean(form.startDate && form.endDate && form.endDate > form.startDate);
+    const hasDates = Boolean(form.startDate && form.endDate && form.endDate >= form.startDate);
     const hasParsha = Boolean(form.parsha.trim());
     if (!form.customerPhone || (dateMode === 'dates' && !hasDates) || (dateMode === 'parsha' && !hasParsha)) return;
     const existingLead = editingLeadId ? state.leads.find(lead => lead.id === editingLeadId) : undefined;
@@ -2596,7 +2596,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
           <SelectField label="לפי" value={dateMode} options={['dates', 'parsha']} labels={{ dates: 'תאריך', parsha: 'פרשה' }} onChange={value => setDateMode(value as 'dates' | 'parsha')} />
           {dateMode === 'dates' ? (
             <>
-              <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate <= value ? '' : form.endDate })} />
+              <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate < value ? '' : form.endDate })} />
               <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
             </>
           ) : (

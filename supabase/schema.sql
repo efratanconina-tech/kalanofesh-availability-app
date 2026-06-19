@@ -50,12 +50,14 @@ create table if not exists public.leads (
   assigned_to uuid references public.profiles(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint leads_dates_valid check (end_date > start_date)
+  constraint leads_dates_valid check (end_date >= start_date)
 );
 
 alter table public.leads alter column start_date drop not null;
 alter table public.leads alter column end_date drop not null;
 alter table public.leads add column if not exists parsha text;
+alter table public.leads drop constraint if exists leads_dates_valid;
+alter table public.leads add constraint leads_dates_valid check (end_date is null or start_date is null or end_date >= start_date);
 
 create table if not exists public.availability_blocks (
   id uuid primary key default gen_random_uuid(),
@@ -75,8 +77,11 @@ create table if not exists public.availability_blocks (
   updated_by uuid references public.profiles(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint availability_dates_valid check (end_date > start_date)
+  constraint availability_dates_valid check (end_date >= start_date)
 );
+
+alter table public.availability_blocks drop constraint if exists availability_dates_valid;
+alter table public.availability_blocks add constraint availability_dates_valid check (end_date >= start_date);
 
 alter table public.availability_blocks add column if not exists commission_amount text;
 alter table public.availability_blocks add column if not exists commission_paid boolean not null default false;

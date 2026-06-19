@@ -83,6 +83,15 @@ export function createTask(state: AppState, data: Omit<Task, 'id' | 'createdAt' 
   return { ...state, tasks: [task, ...state.tasks] };
 }
 
+function endExclusive(startDate: string, endDate: string): string {
+  if (endDate > startDate) return endDate;
+  const date = new Date(`${startDate}T12:00:00`);
+  date.setDate(date.getDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
 export function hasDateConflict(block: AvailabilityBlock, startDate: string, endDate: string): boolean {
-  return block.startDate < endDate && block.endDate > startDate;
+  const blockEnd = endExclusive(block.startDate, block.endDate);
+  const requestedEnd = endExclusive(startDate, endDate);
+  return block.startDate < requestedEnd && blockEnd > startDate;
 }
