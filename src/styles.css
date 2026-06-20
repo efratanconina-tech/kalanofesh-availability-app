@@ -335,6 +335,11 @@ button {
   font-weight: 900;
 }
 
+.shabbat-date-line {
+  display: block;
+  margin-top: 3px;
+}
+
 .muted {
   color: #64748b;
   font-size: 0.82rem;

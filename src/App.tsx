@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.20.01';
+const APP_VERSION = '2026.06.20.02';
 
 type ParsedStayImport = {
   id: string;
@@ -1651,11 +1651,11 @@ function Dashboard({
               const parsha = getParshaLabel(shabbat.labelDate);
 
               return (
-                <div className="list-item" key={shabbat.startDate}>
+                <div className="list-item shabbat-availability-item" key={shabbat.startDate}>
                   <div className="item-head">
                     <div>
-                      <p className="item-title">{formatDateLine(shabbat.labelDate)}</p>
-                      {parsha && <span className="muted">{parsha}</span>}
+                      <p className="item-title">{parsha ?? 'שבת פנויה'}</p>
+                      <span className="muted shabbat-date-line">{formatDateLine(shabbat.labelDate)}</span>
                     </div>
                     <span className="pill available">{shabbat.available.length} פנויים</span>
                   </div>
