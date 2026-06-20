@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.20.03';
+const APP_VERSION = '2026.06.20.04';
 
 type ParsedStayImport = {
   id: string;
@@ -2520,6 +2520,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   const [complexId, setComplexId] = useState('all');
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear] = useState(now.getFullYear());
+  const [calendarMode, setCalendarMode] = useState<'check' | 'mark'>('check');
   const [status, setStatus] = useState<AvailabilityStatus>('booked');
   const [selectedDate, setSelectedDate] = useState(todayYMD());
   const [rangeForm, setRangeForm] = useState({
@@ -2707,7 +2708,28 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   return (
     <div className="grid">
       <section className="card">
-        <h2 className="section-title">לוחות זמינות</h2>
+        <div className="item-head">
+          <div>
+            <h2 className="section-title">לוחות זמינות</h2>
+            <p className="muted">בחרי תאריך על הלוח. לבדיקה תראי מה פנוי, לסימון ייפתחו פעולות עריכה.</p>
+          </div>
+        </div>
+        <div className="mode-switch" role="group" aria-label="מצב עבודה בלוחות">
+          <button
+            className={calendarMode === 'check' ? 'active' : ''}
+            type="button"
+            onClick={() => setCalendarMode('check')}
+          >
+            בדיקה
+          </button>
+          <button
+            className={calendarMode === 'mark' ? 'active' : ''}
+            type="button"
+            onClick={() => setCalendarMode('mark')}
+          >
+            סימון
+          </button>
+        </div>
         <div className="form-grid">
           <SelectField
             label="מתחם"
@@ -2716,13 +2738,16 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
             labels={{ all: 'הכל', ...Object.fromEntries(activeComplexes.map(complex => [complex.id, complex.name])) }}
             onChange={setComplexId}
           />
-          <SelectField label="סימון" value={status} options={['booked', 'available']} labels={statusLabels} onChange={value => setStatus(value as AvailabilityStatus)} />
+          {calendarMode === 'mark' && (
+            <SelectField label="סימון" value={status} options={['booked', 'available']} labels={statusLabels} onChange={value => setStatus(value as AvailabilityStatus)} />
+          )}
         </div>
         <p className="muted">
-          {selected ? `${selected.city} · ${selected.rooms} חדרים · עד ${selected.maxGuests} אורחים` : 'בחרי הכל כדי לסקור את כל המתחמים, או מתחם מסוים כדי לסמן טווח.'}
+          {selected ? `${selected.city} · ${selected.rooms} חדרים · עד ${selected.maxGuests} אורחים` : 'אפשר לבדוק את כל המתחמים יחד, או לבחור מתחם אחד.'}
         </p>
       </section>
 
+      {calendarMode === 'mark' && (
       <section className="card">
         <div className="item-head">
           <h2 className="section-title">סימון טווח אירוח</h2>
@@ -2794,52 +2819,9 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
           </div>
         </div>
       </section>
+      )}
 
-      <section className="card">
-        <h2 className="section-title">לוח לפי מתחם</h2>
-        <div className="complex-calendar-list">
-          {visibleComplexes.map(complex => (
-            <div className="complex-calendar-row" key={`calendar-row-${complex.id}`}>
-              <button className="complex-calendar-name" type="button" onClick={() => setComplexId(complex.id)}>
-                <span>{complex.name}</span>
-                <small>{complex.city}</small>
-              </button>
-              <div className="complex-calendar-scroll">
-                {grid.flatMap(week => week.filter(Boolean) as Date[]).map(day => {
-                  const dateStr = toYMD(day);
-                  const block = getBlockForDate(complex.id, dateStr);
-                  const className = [
-                    'mini-day',
-                    dateStr === selectedDate ? 'selected' : '',
-                    block?.status === 'available' ? 'free' : '',
-                    block?.status === 'booked' ? 'busy' : '',
-                    !block || (block.status !== 'available' && block.status !== 'booked') ? 'optional' : '',
-                    isPastDate(dateStr) ? 'past' : '',
-                  ].filter(Boolean).join(' ');
-
-                  return (
-                    <button
-                      className={className}
-                      type="button"
-                      key={`${complex.id}-${dateStr}`}
-                      disabled={isPastDate(dateStr)}
-                      title={`${complex.name} · ${formatDateLine(dateStr)} · ${block ? statusLabels[block.status] : 'אופציונלי'}`}
-                      onClick={() => {
-                        setSelectedDate(dateStr);
-                        setComplexId(complex.id);
-                        setRangeForm(current => ({ ...current, startDate: dateStr, endDate: toYMD(addDays(dateFromYMD(dateStr), 1)) }));
-                      }}
-                    >
-                      {day.getDate()}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
+      {calendarMode === 'mark' && (
       <section className="card">
         <h2 className="section-title">סימונים קיימים {selected ? `- ${selected.name}` : ''}</h2>
         <div className="list">
@@ -2863,6 +2845,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
           ))}
         </div>
       </section>
+      )}
 
       <section className="card">
         <div className="item-head">
