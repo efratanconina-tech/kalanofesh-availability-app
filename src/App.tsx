@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.20.02';
+const APP_VERSION = '2026.06.20.03';
 
 type ParsedStayImport = {
   id: string;
@@ -475,6 +475,35 @@ function extractDateRangeFromLine(line: string): { raw: string; startDate: strin
   if (!match) return null;
   const range = parseDateRangeText(match[1]);
   return range ? { raw: match[1], ...range } : null;
+}
+
+function expandWeekendRange(range: { startDate: string; endDate: string }): { startDate: string; endDate: string } {
+  const start = dateFromYMD(range.startDate);
+  const end = dateFromYMD(range.endDate);
+  if (toYMD(addDays(start, 1)) !== range.endDate) return range;
+
+  const day = start.getDay();
+  if (day === 5) {
+    return { startDate: range.startDate, endDate: toYMD(addDays(start, 2)) };
+  }
+  if (day === 6) {
+    return { startDate: toYMD(addDays(start, -1)), endDate: toYMD(addDays(start, 1)) };
+  }
+
+  return range;
+}
+
+function parseBulkDateRanges(input: string): { sourceLine: string; startDate: string; endDate: string }[] {
+  return input
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .flatMap(line => {
+      const range = extractDateRangeFromLine(line);
+      if (!range) return [];
+      const expanded = expandWeekendRange(range);
+      return [{ sourceLine: line, startDate: expanded.startDate, endDate: expanded.endDate }];
+    });
 }
 
 function splitImportLine(line: string): string[] {
@@ -2498,6 +2527,8 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     endDate: '',
     note: '',
   });
+  const [bulkDatesText, setBulkDatesText] = useState('');
+  const [bulkError, setBulkError] = useState('');
   const activeComplexes = useMemo(() => state.complexes.filter(complex => complex.active), [state.complexes]);
   const selected = activeComplexes.find(complex => complex.id === complexId);
   const grid = getMonthGrid(year, month);
@@ -2541,6 +2572,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     busy: dailyAvailability.filter(item => item.bucket === 'busy'),
     optional: dailyAvailability.filter(item => item.bucket === 'optional'),
   };
+  const bulkRanges = useMemo(() => parseBulkDateRanges(bulkDatesText), [bulkDatesText]);
 
   const saveBlock = async (blockData: {
     complexId: string;
@@ -2610,6 +2642,43 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     });
 
     setRangeForm(current => ({ ...current, note: '' }));
+  };
+
+  const saveBulkRanges = async () => {
+    setBulkError('');
+    if (complexId === 'all') {
+      setBulkError('צריך לבחור מתחם מסוים לפני סימון מרובה.');
+      return;
+    }
+    if (!bulkRanges.length) {
+      setBulkError('לא זוהו תאריכים ברשימה.');
+      return;
+    }
+
+    const notePrefix = status === 'booked' ? 'תפוס אצל בעל הוילה' : 'סומן כפנוי';
+    const blockDataList = bulkRanges.map(range => ({
+        complexId,
+        startDate: range.startDate,
+        endDate: range.endDate,
+        status,
+        note: rangeForm.note || `${notePrefix} | מקור: ${range.sourceLine}`,
+    }));
+
+    if (session) {
+      const savedBlocks: AvailabilityBlock[] = [];
+      for (const blockData of blockDataList) {
+        savedBlocks.push(await insertCloudAvailability(session, blockData));
+      }
+      persist({ ...state, availabilityBlocks: [...state.availabilityBlocks, ...savedBlocks] });
+    } else {
+      const nextState = blockDataList.reduce(
+        (currentState, blockData) => createAvailabilityBlock(currentState, blockData),
+        state
+      );
+      persist(nextState);
+    }
+
+    setBulkDatesText('');
   };
 
   const deleteBlock = async (blockId: string) => {
@@ -2688,6 +2757,41 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
           <button className="primary-btn" type="button" onClick={saveRange} disabled={complexId === 'all'}>שמור טווח</button>
           <button className="secondary-btn" type="button" onClick={markSelectedDay} disabled={complexId === 'all'}>סמן את היום שנבחר</button>
           <span className="muted">במצב “הכל” מסמנים מתוך רשימת התאריך. לטווחים בחרי מתחם מסוים.</span>
+        </div>
+        <div className="bulk-marker">
+          <div className="item-head">
+            <div>
+              <h3 className="mini-title">סימון מרובה מרשימת תאריכים</h3>
+              <p className="muted">הדביקי כל תאריך בשורה. שישי/שבת יסומנו אוטומטית כשישי-שבת.</p>
+            </div>
+            <span className={`pill ${status}`}>{bulkRanges.length} זוהו</span>
+          </div>
+          <textarea
+            value={bulkDatesText}
+            onChange={event => {
+              setBulkDatesText(event.target.value);
+              setBulkError('');
+            }}
+            placeholder={'לדוגמה:\n17.7.26\n24.7.26\n9.8-12.8\n11.9.26 ראש השנה'}
+            rows={5}
+          />
+          {bulkRanges.length > 0 && (
+            <div className="bulk-preview">
+              {bulkRanges.slice(0, 4).map(range => (
+                <span key={`${range.startDate}-${range.sourceLine}`}>{formatDateLine(range.startDate, range.endDate)}</span>
+              ))}
+              {bulkRanges.length > 4 && <span>ועוד {bulkRanges.length - 4}</span>}
+            </div>
+          )}
+          {bulkError && <p className="form-error">{bulkError}</p>}
+          <div className="actions">
+            <button className="primary-btn" type="button" onClick={saveBulkRanges} disabled={complexId === 'all' || !bulkDatesText.trim()}>
+              סמן את כל הרשימה
+            </button>
+            <button className="ghost-btn" type="button" onClick={() => setBulkDatesText('')} disabled={!bulkDatesText.trim()}>
+              נקה
+            </button>
+          </div>
         </div>
       </section>
 
