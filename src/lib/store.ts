@@ -26,10 +26,13 @@ export function loadState(): AppState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return withoutRemovedComplexes(clone(seedState));
     const parsed = JSON.parse(raw) as AppState;
+    const parsedAvailabilityIds = new Set((parsed.availabilityBlocks ?? []).map(block => block.id));
+    const seededAvailability = clone(seedState.availabilityBlocks).filter(block => !parsedAvailabilityIds.has(block.id));
     return withoutRemovedComplexes({
       ...clone(seedState),
       ...parsed,
       complexes: parsed.complexes?.length ? parsed.complexes : clone(seedState.complexes),
+      availabilityBlocks: [...seededAvailability, ...(parsed.availabilityBlocks ?? [])],
     });
   } catch {
     return withoutRemovedComplexes(clone(seedState));
