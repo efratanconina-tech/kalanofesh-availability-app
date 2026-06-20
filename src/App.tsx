@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.20.05';
+const APP_VERSION = '2026.06.20.06';
 
 type ParsedStayImport = {
   id: string;
@@ -2530,6 +2530,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   });
   const [bulkDatesText, setBulkDatesText] = useState('');
   const [bulkError, setBulkError] = useState('');
+  const [calendarMarkMessage, setCalendarMarkMessage] = useState('');
   const activeComplexes = useMemo(() => state.complexes.filter(complex => complex.active), [state.complexes]);
   const selected = activeComplexes.find(complex => complex.id === complexId);
   const grid = getMonthGrid(year, month);
@@ -2611,12 +2612,47 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     if (isPastDate(dateStr)) return;
     const endDate = toYMD(new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1));
 
+    setCalendarMarkMessage('');
     setSelectedDate(dateStr);
     setRangeForm(current => ({
       ...current,
       startDate: dateStr,
       endDate,
     }));
+  };
+
+  const markDateFromCalendar = async (date: Date) => {
+    const dateStr = toYMD(date);
+    if (isPastDate(dateStr)) return;
+
+    selectDay(date);
+
+    if (complexId === 'all') {
+      setCalendarMarkMessage('בחרי מתחם מסוים כדי לסמן ישירות על הלוח.');
+      return;
+    }
+
+    const range = expandWeekendRange({
+      startDate: dateStr,
+      endDate: toYMD(addDays(date, 1)),
+    });
+
+    await saveBlock({
+      complexId,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      status,
+      note: rangeForm.note || (status === 'booked' ? 'תפוס אצל בעל הוילה' : 'סומן כפנוי'),
+    });
+    setCalendarMarkMessage(`${statusLabels[status]} נשמר בלוח.`);
+  };
+
+  const handleCalendarDayClick = (date: Date) => {
+    if (calendarMode === 'mark') {
+      void markDateFromCalendar(date);
+      return;
+    }
+    selectDay(date);
   };
 
   const markSelectedDay = async () => {
@@ -2743,8 +2779,11 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
           )}
         </div>
         <p className="muted">
-          {selected ? `${selected.city} · ${selected.rooms} חדרים · עד ${selected.maxGuests} אורחים` : 'אפשר לבדוק את כל המתחמים יחד, או לבחור מתחם אחד.'}
+          {calendarMode === 'mark'
+            ? selected ? `לחיצה על יום בלוח תסמן אותו עבור ${selected.name}.` : 'בחרי מתחם מסוים ואז לחצי על יום בלוח כדי לסמן.'
+            : selected ? `${selected.city} · ${selected.rooms} חדרים · עד ${selected.maxGuests} אורחים` : 'אפשר לבדוק את כל המתחמים יחד, או לבחור מתחם אחד.'}
         </p>
+        {calendarMarkMessage && <p className="form-error soft">{calendarMarkMessage}</p>}
       </section>
 
       {calendarMode === 'mark' && (
@@ -2882,7 +2921,14 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
                   busyCount === 0 && freeCount === 0 ? 'pending' : '',
                 ].filter(Boolean).join(' ');
                 return (
-                  <button className={className} disabled={isPastDate(dateStr)} key={dateStr} type="button" onClick={() => selectDay(day)} title={`בדיקת זמינות: ${formatDateLine(dateStr)}`}>
+                  <button
+                    className={className}
+                    disabled={isPastDate(dateStr)}
+                    key={dateStr}
+                    type="button"
+                    onClick={() => handleCalendarDayClick(day)}
+                    title={`${calendarMode === 'mark' ? 'סימון' : 'בדיקת זמינות'}: ${formatDateLine(dateStr)}`}
+                  >
                     <span>{day.getDate()}</span>
                     <small>{formatCalendarHebrewDate(dateStr)}</small>
                   </button>

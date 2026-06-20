@@ -1148,6 +1148,13 @@ button {
   font-weight: 900;
 }
 
+.form-error.soft {
+  margin-top: 8px;
+  border-color: rgba(100, 116, 139, 0.14);
+  background: rgba(100, 116, 139, 0.08);
+  color: #475569;
+}
+
 @media (min-width: 760px) {
   .app-shell {
     padding: 28px 20px calc(140px + env(safe-area-inset-bottom));
