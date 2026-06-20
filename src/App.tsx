@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.20.06';
+const APP_VERSION = '2026.06.20.07';
 
 type ParsedStayImport = {
   id: string;
@@ -2523,11 +2523,6 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   const [calendarMode, setCalendarMode] = useState<'check' | 'mark'>('check');
   const [status, setStatus] = useState<AvailabilityStatus>('booked');
   const [selectedDate, setSelectedDate] = useState(todayYMD());
-  const [rangeForm, setRangeForm] = useState({
-    startDate: todayYMD(),
-    endDate: '',
-    note: '',
-  });
   const [bulkDatesText, setBulkDatesText] = useState('');
   const [bulkError, setBulkError] = useState('');
   const [calendarMarkMessage, setCalendarMarkMessage] = useState('');
@@ -2610,15 +2605,9 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   const selectDay = (date: Date) => {
     const dateStr = toYMD(date);
     if (isPastDate(dateStr)) return;
-    const endDate = toYMD(new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1));
 
     setCalendarMarkMessage('');
     setSelectedDate(dateStr);
-    setRangeForm(current => ({
-      ...current,
-      startDate: dateStr,
-      endDate,
-    }));
   };
 
   const markDateFromCalendar = async (date: Date) => {
@@ -2642,7 +2631,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       startDate: range.startDate,
       endDate: range.endDate,
       status,
-      note: rangeForm.note || (status === 'booked' ? 'תפוס אצל בעל הוילה' : 'סומן כפנוי'),
+      note: status === 'booked' ? 'תפוס אצל בעל הוילה' : 'סומן כפנוי',
     });
     setCalendarMarkMessage(`${statusLabels[status]} נשמר בלוח.`);
   };
@@ -2653,32 +2642,6 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       return;
     }
     selectDay(date);
-  };
-
-  const markSelectedDay = async () => {
-    if (isPastDate(selectedDate) || complexId === 'all') return;
-
-    await saveBlock({
-      complexId,
-      startDate: selectedDate,
-      endDate: selectedDateEnd,
-      status,
-      note: rangeForm.note || (status === 'booked' ? 'תפוס אצל בעל הוילה' : 'סומן כפנוי'),
-    });
-  };
-
-  const saveRange = async () => {
-    if (complexId === 'all' || !rangeForm.startDate || !rangeForm.endDate || rangeForm.endDate < rangeForm.startDate || isPastDate(rangeForm.startDate)) return;
-
-    await saveBlock({
-      complexId,
-      startDate: rangeForm.startDate,
-      endDate: rangeForm.endDate,
-      status,
-      note: rangeForm.note || (status === 'booked' ? 'תפוס אצל בעל הוילה' : 'סומן כפנוי'),
-    });
-
-    setRangeForm(current => ({ ...current, note: '' }));
   };
 
   const saveBulkRanges = async () => {
@@ -2698,7 +2661,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
         startDate: range.startDate,
         endDate: range.endDate,
         status,
-        note: rangeForm.note || `${notePrefix} | מקור: ${range.sourceLine}`,
+        note: `${notePrefix} | מקור: ${range.sourceLine}`,
     }));
 
     if (session) {
@@ -2747,7 +2710,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
         <div className="item-head">
           <div>
             <h2 className="section-title">לוחות זמינות</h2>
-            <p className="muted">בחרי תאריך על הלוח. לבדיקה תראי מה פנוי, לסימון ייפתחו פעולות עריכה.</p>
+            <p className="muted">בחרי תאריך על הלוח. בבדיקה תראי מה פנוי, ובסימון לחיצה על יום מסמנת אותו מיד.</p>
           </div>
         </div>
         <div className="mode-switch" role="group" aria-label="מצב עבודה בלוחות">
@@ -2780,7 +2743,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
         </div>
         <p className="muted">
           {calendarMode === 'mark'
-            ? selected ? `לחיצה על יום בלוח תסמן אותו עבור ${selected.name}.` : 'בחרי מתחם מסוים ואז לחצי על יום בלוח כדי לסמן.'
+            ? selected ? `בחרי סטטוס ולחצי על יום בלוח כדי לסמן אותו עבור ${selected.name}.` : 'בחרי מתחם מסוים ואז לחצי על יום בלוח כדי לסמן.'
             : selected ? `${selected.city} · ${selected.rooms} חדרים · עד ${selected.maxGuests} אורחים` : 'אפשר לבדוק את כל המתחמים יחד, או לבחור מתחם אחד.'}
         </p>
         {calendarMarkMessage && <p className="form-error soft">{calendarMarkMessage}</p>}
@@ -2789,47 +2752,15 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       {calendarMode === 'mark' && (
       <section className="card">
         <div className="item-head">
-          <h2 className="section-title">סימון טווח אירוח</h2>
+          <div>
+            <h2 className="section-title">סימון מרובה מרשימה</h2>
+            <p className="muted">לסימון רגיל פשוט לחצי על התאריך בלוח. כאן מדביקים רשימה כשיש הרבה תאריכים.</p>
+          </div>
           <span className={`pill ${status}`}>{statusLabels[status]}</span>
         </div>
-        <div className="form-grid">
-          <DateField
-            label="כניסה"
-            value={rangeForm.startDate}
-            min={todayYMD()}
-            onChange={value => setRangeForm(current => ({
-              ...current,
-              startDate: value,
-              endDate: current.endDate < value ? '' : current.endDate,
-            }))}
-          />
-          <DateField
-            label="יציאה"
-            value={rangeForm.endDate}
-            min={rangeForm.startDate || todayYMD()}
-            onChange={value => setRangeForm(current => ({ ...current, endDate: value }))}
-          />
-          <Field
-            className="full"
-            label="הערה פנימית"
-            value={rangeForm.note}
-            onChange={value => setRangeForm(current => ({ ...current, note: value }))}
-            placeholder={status === 'booked' ? 'לדוגמה: תפוס אצל בעל הוילה' : 'לדוגמה: בעל המתחם אישר שפנוי'}
-          />
-        </div>
-        <div className="actions" style={{ marginTop: 12 }}>
-          <button className="primary-btn" type="button" onClick={saveRange} disabled={complexId === 'all'}>שמור טווח</button>
-          <button className="secondary-btn" type="button" onClick={markSelectedDay} disabled={complexId === 'all'}>סמן את היום שנבחר</button>
-          <span className="muted">במצב “הכל” מסמנים מתוך רשימת התאריך. לטווחים בחרי מתחם מסוים.</span>
-        </div>
         <div className="bulk-marker">
-          <div className="item-head">
-            <div>
-              <h3 className="mini-title">סימון מרובה מרשימת תאריכים</h3>
-              <p className="muted">הדביקי כל תאריך בשורה. שישי/שבת יסומנו אוטומטית כשישי-שבת.</p>
-            </div>
-            <span className={`pill ${status}`}>{bulkRanges.length} זוהו</span>
-          </div>
+          <span className={`pill ${status}`}>{bulkRanges.length} זוהו</span>
+          <p className="muted">הדביקי כל תאריך בשורה. שישי/שבת יסומנו אוטומטית כשישי-שבת.</p>
           <textarea
             value={bulkDatesText}
             onChange={event => {
@@ -2966,16 +2897,9 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
                   <button
                     className="ghost-btn"
                     type="button"
-                    onClick={() => {
-                      setComplexId(complex.id);
-                      setRangeForm(current => ({
-                        ...current,
-                        startDate: selectedDate,
-                        endDate: selectedDateEnd,
-                      }));
-                    }}
+                    onClick={() => setComplexId(complex.id)}
                   >
-                    בחר לטווח
+                    בחר מתחם
                   </button>
                   {complex.ownerPhone && <a className="ghost-btn" href={`tel:${complex.ownerPhone}`}>התקשר לבעל מתחם</a>}
                 </div>
