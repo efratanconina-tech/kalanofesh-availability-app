@@ -284,9 +284,9 @@ button {
   overscroll-behavior-x: contain;
 }
 
-.assistant-fab {
+.assistant-fab,
+.lookup-fab {
   position: fixed;
-  left: 16px;
   bottom: calc(92px + env(safe-area-inset-bottom));
   z-index: 25;
   display: inline-flex;
@@ -303,7 +303,17 @@ button {
   cursor: pointer;
 }
 
-.assistant-overlay {
+.lookup-fab {
+  right: 16px;
+  background: #cda85b;
+  color: #0f172a;
+}
+
+.assistant-fab {
+  left: 16px;
+}
+
+.floating-overlay {
   position: fixed;
   inset: 0;
   z-index: 40;
@@ -314,7 +324,7 @@ button {
   backdrop-filter: blur(8px);
 }
 
-.assistant-popup {
+.floating-popup {
   position: relative;
   width: min(720px, 100%);
   max-height: min(82vh, 760px);
@@ -323,7 +333,7 @@ button {
   box-shadow: 0 28px 70px rgba(15, 23, 42, 0.3);
 }
 
-.assistant-close {
+.floating-close {
   position: absolute;
   top: 10px;
   left: 10px;
@@ -1076,8 +1086,29 @@ button {
   border-radius: 18px;
 }
 
-.assistant-compact .item-head {
+.assistant-compact .item-head,
+.lookup-compact .popup-title-row {
   padding-inline-start: 46px;
+}
+
+.lookup-compact {
+  display: grid;
+  gap: 12px;
+}
+
+.lookup-compact .card {
+  border-radius: 18px;
+}
+
+.lookup-compact .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lookup-compact .availability-grid,
+.lookup-compact .list {
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+  padding-left: 4px;
 }
 
 .quick-prompts {

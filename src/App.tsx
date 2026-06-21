@@ -50,7 +50,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.06';
+const APP_VERSION = '2026.06.21.07';
 
 type ParsedStayImport = {
   id: string;
@@ -788,6 +788,7 @@ function App() {
   const [state, setState] = useState<AppState>(() => loadState());
   const [tab, setTab] = useState<Tab>('dashboard');
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [lookupOpen, setLookupOpen] = useState(false);
   const [session, setSession] = useState<CloudSession | null>(() => getStoredSession());
   const [syncStatus, setSyncStatus] = useState('מקומי');
 
@@ -871,22 +872,20 @@ function App() {
         </header>
 
         {tab === 'dashboard' && (
-          <>
-            <QuickLookup state={state} persist={persist} session={session} />
-            <Dashboard
-              totalComplexes={totalComplexes}
-              nextShabbatAvailable={nextShabbatAvailable}
-              nextShabbatLabel={nextShabbatRange?.labelDate}
-              nextShabbatParsha={nextShabbatParsha}
-              openLeads={openLeads.length}
-              openTasks={openTasks.length}
-              upcomingAvailableCount={upcomingAvailableShabbats.length}
-              availableShabbats={upcomingAvailableShabbats}
-              onGo={setTab}
-              syncStatus={syncStatus}
-              connected={Boolean(session)}
-            />
-          </>
+          <Dashboard
+            totalComplexes={totalComplexes}
+            nextShabbatAvailable={nextShabbatAvailable}
+            nextShabbatLabel={nextShabbatRange?.labelDate}
+            nextShabbatParsha={nextShabbatParsha}
+            openLeads={openLeads.length}
+            openTasks={openTasks.length}
+            upcomingAvailableCount={upcomingAvailableShabbats.length}
+            availableShabbats={upcomingAvailableShabbats}
+            onGo={setTab}
+            onOpenLookup={() => setLookupOpen(true)}
+            syncStatus={syncStatus}
+            connected={Boolean(session)}
+          />
         )}
 
         {!session && isCloudConfigured() && (
@@ -905,13 +904,23 @@ function App() {
       </main>
 
       <nav className="tabs" aria-label="ניווט">
-        <TabButton active={tab === 'dashboard'} onClick={() => setTab('dashboard')} icon={<Search size={18} />} label="בדיקה" />
+        <TabButton active={tab === 'dashboard'} onClick={() => setTab('dashboard')} icon={<Home size={18} />} label="בית" />
         <TabButton active={tab === 'catalog'} onClick={() => setTab('catalog')} icon={<Building2 size={18} />} label="מתחמים" />
         <TabButton active={tab === 'stays'} onClick={() => setTab('stays')} icon={<BellRing size={18} />} label="אירוחים" />
         <TabButton active={tab === 'calendar'} onClick={() => setTab('calendar')} icon={<CalendarDays size={18} />} label="לוחות" />
         <TabButton active={tab === 'leads'} onClick={() => setTab('leads')} icon={<Users size={18} />} label="לקוחות" />
         <TabButton active={tab === 'tasks'} onClick={() => setTab('tasks')} icon={<ListChecks size={18} />} label="משימות" />
       </nav>
+
+      <button
+        className="lookup-fab"
+        type="button"
+        onClick={() => setLookupOpen(true)}
+        aria-label="פתח בדיקת זמינות"
+      >
+        <Search size={22} />
+        <span>בדיקה</span>
+      </button>
 
       <button
         className="assistant-fab"
@@ -923,15 +932,16 @@ function App() {
         <span>עוזר אישי</span>
       </button>
 
+      {lookupOpen && (
+        <FloatingPanel label="בדיקת זמינות" onClose={() => setLookupOpen(false)}>
+          <QuickLookup state={state} persist={persist} session={session} compact />
+        </FloatingPanel>
+      )}
+
       {assistantOpen && (
-        <div className="assistant-overlay" role="dialog" aria-modal="true" aria-label="עוזר אישי" onClick={() => setAssistantOpen(false)}>
-          <div className="assistant-popup" onClick={event => event.stopPropagation()}>
-            <button className="assistant-close" type="button" onClick={() => setAssistantOpen(false)} aria-label="סגור עוזר אישי">
-              <X size={20} />
-            </button>
+        <FloatingPanel label="עוזר אישי" onClose={() => setAssistantOpen(false)}>
             <AssistantView state={state} persist={persist} session={session} compact />
-          </div>
-        </div>
+        </FloatingPanel>
       )}
     </div>
   );
@@ -993,6 +1003,27 @@ function LoginButton({ onLogin }: { onLogin: (session: CloudSession) => void }) 
           {loading ? 'נכנס...' : 'התחבר'}
         </button>
         <button className="ghost-btn" type="button" onClick={() => setOpen(false)}>סגור</button>
+      </div>
+    </div>
+  );
+}
+
+function FloatingPanel({
+  children,
+  label,
+  onClose,
+}: {
+  children: React.ReactNode;
+  label: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="floating-overlay" role="dialog" aria-modal="true" aria-label={label} onClick={onClose}>
+      <div className="floating-popup" onClick={event => event.stopPropagation()}>
+        <button className="floating-close" type="button" onClick={onClose} aria-label={`סגור ${label}`}>
+          <X size={20} />
+        </button>
+        {children}
       </div>
     </div>
   );
@@ -1650,6 +1681,7 @@ function Dashboard({
   upcomingAvailableCount,
   availableShabbats,
   onGo,
+  onOpenLookup,
   syncStatus,
   connected,
 }: {
@@ -1667,6 +1699,7 @@ function Dashboard({
     available: Complex[];
   }[];
   onGo: (tab: Tab) => void;
+  onOpenLookup: () => void;
   syncStatus: string;
   connected: boolean;
 }) {
@@ -1687,7 +1720,7 @@ function Dashboard({
           <p>סך המתחמים, זמינות לשבת הקרובה, פניות פתוחות ומשימות במקום אחד.</p>
         </div>
         <div className="hero-actions">
-          <button className="primary-btn" type="button" onClick={() => onGo('calendar')}>לוחות וסימון</button>
+          <button className="primary-btn" type="button" onClick={onOpenLookup}>בדיקת זמינות</button>
           <button className="secondary-btn" type="button" onClick={() => onGo('leads')}>לקוחות</button>
         </div>
       </section>
@@ -1734,6 +1767,7 @@ function Dashboard({
             <h2 className="section-title">פעולות מהירות</h2>
           </div>
           <div className="grid">
+            <button className="primary-btn" type="button" onClick={onOpenLookup}>בדיקת זמינות ללקוח</button>
             <button className="secondary-btn" type="button" onClick={() => onGo('leads')}>הוספת פנייה</button>
             <button className="ghost-btn" type="button" onClick={() => onGo('tasks')}>פתיחת משימות</button>
           </div>
@@ -1756,7 +1790,17 @@ function Metric({ label, value, icon, detail, compact = false }: { label: string
   );
 }
 
-function QuickLookup({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
+function QuickLookup({
+  state,
+  persist,
+  session,
+  compact = false,
+}: {
+  state: AppState;
+  persist: (state: AppState) => void;
+  session: CloudSession | null;
+  compact?: boolean;
+}) {
   const [form, setForm] = useState({
     startDate: todayYMD(),
     endDate: '',
@@ -1847,9 +1891,11 @@ function QuickLookup({ state, persist, session }: { state: AppState; persist: (s
   };
 
   return (
-    <div className="grid">
+    <div className={compact ? 'lookup-compact' : 'grid'}>
       <section className="card">
-        <h2 className="section-title">בדיקת זמינות מהירה</h2>
+        <div className="popup-title-row">
+          <h2 className="section-title">בדיקת זמינות מהירה</h2>
+        </div>
         <div className="form-grid">
           <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate < value ? '' : form.endDate })} />
           <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
