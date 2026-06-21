@@ -1,5 +1,5 @@
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
-const MAX_OUTPUT_TOKENS = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS || 600);
+const MAX_OUTPUT_TOKENS = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS || 450);
 const MAX_ITEMS_PER_TABLE = Number(process.env.OPENAI_MAX_ITEMS_PER_TABLE || 80);
 const MAX_MESSAGE_CHARS = Number(process.env.OPENAI_MAX_MESSAGE_CHARS || 4000);
 

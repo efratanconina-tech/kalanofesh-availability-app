@@ -50,7 +50,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.11';
+const APP_VERSION = '2026.06.21.12';
 
 type ParsedStayImport = {
   id: string;
