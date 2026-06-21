@@ -449,6 +449,25 @@ button {
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
 }
 
+.popup-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.compact-switch {
+  width: min(220px, 100%);
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.compact-switch button {
+  min-height: 34px;
+  font-size: 0.9rem;
+}
+
 .mini-title {
   margin: 0;
   color: #0f172a;

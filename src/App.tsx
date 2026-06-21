@@ -50,7 +50,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.09';
+const APP_VERSION = '2026.06.21.10';
 
 type ParsedStayImport = {
   id: string;
@@ -185,6 +185,17 @@ function getDateParshaLabel(dateStr: string): string | undefined {
   if (day === 5) return getParshaLabel(toYMD(addDays(date, 1)));
   if (day === 6) return getParshaLabel(dateStr);
   return undefined;
+}
+
+function getParshaRange(parshaLabel: string): { startDate: string; endDate: string; labelDate: string } | null {
+  const entry = Object.entries(parshaByShabbatDate).find(([, label]) => label === parshaLabel);
+  if (!entry) return null;
+  const [labelDate] = entry;
+  return {
+    startDate: toYMD(addDays(dateFromYMD(labelDate), -1)),
+    endDate: toYMD(addDays(dateFromYMD(labelDate), 1)),
+    labelDate,
+  };
 }
 
 function formatCalendarHebrewDate(dateStr: string): string {
@@ -1801,9 +1812,12 @@ function QuickLookup({
   session: CloudSession | null;
   compact?: boolean;
 }) {
+  const parshaOptions = Object.values(parshaByShabbatDate).filter((label, index, labels) => labels.indexOf(label) === index);
+  const [lookupMode, setLookupMode] = useState<'dates' | 'parsha'>('dates');
   const [form, setForm] = useState({
     startDate: todayYMD(),
     endDate: '',
+    parsha: getParshaLabel(getUpcomingShabbatRanges(1)[0]?.labelDate) ?? parshaOptions[0] ?? '',
     guests: '20',
     area: 'לא משנה',
     vacationType: 'שבת חתן',
@@ -1813,15 +1827,19 @@ function QuickLookup({
   });
   const [checked, setChecked] = useState(false);
 
+  const selectedParshaRange = lookupMode === 'parsha' ? getParshaRange(form.parsha) : null;
+  const lookupStartDate = lookupMode === 'parsha' ? selectedParshaRange?.startDate ?? '' : form.startDate;
+  const lookupEndDate = lookupMode === 'parsha' ? selectedParshaRange?.endDate ?? '' : form.endDate;
+
   const results = useMemo(() => {
-    if (!form.startDate || !form.endDate || form.endDate < form.startDate || isPastDate(form.startDate)) return [];
+    if (!lookupStartDate || !lookupEndDate || lookupEndDate < lookupStartDate || isPastDate(lookupStartDate)) return [];
     const requestedGuests = Number(form.guests || 0);
 
     return state.complexes
       .filter(complex => complex.active)
       .map(complex => {
         const conflicts = state.availabilityBlocks.filter(block =>
-          block.complexId === complex.id && hasDateConflict(block, form.startDate, form.endDate)
+          block.complexId === complex.id && hasDateConflict(block, lookupStartDate, lookupEndDate)
         );
         const guestFit = getGuestFit(complex.maxGuests, requestedGuests);
         const capacityOk = complex.maxGuests >= requestedGuests;
@@ -1829,22 +1847,21 @@ function QuickLookup({
         const score = guestFit.score + (capacityOk ? 20 : 0) + (areaOk ? 30 : 0) + (conflicts.length === 0 ? 30 : 0);
         return { complex, conflicts, capacityOk, areaOk, guestFit, score };
       })
-      .filter(result => result.guestFit.isReasonable)
+      .filter(result => result.conflicts.length === 0)
       .sort((a, b) => {
-        const availabilityOrder = Number(a.conflicts.length > 0) - Number(b.conflicts.length > 0);
-        if (availabilityOrder !== 0) return availabilityOrder;
         const areaOrder = Number(!a.areaOk) - Number(!b.areaOk);
         if (areaOrder !== 0) return areaOrder;
         return b.score - a.score;
       });
-  }, [form.area, form.endDate, form.guests, form.startDate, state.availabilityBlocks, state.complexes]);
+  }, [form.area, form.guests, lookupEndDate, lookupStartDate, state.availabilityBlocks, state.complexes]);
 
   const createLeadFromForm = async () => {
     const leadData = {
       customerName: form.customerName || 'לקוח ללא שם',
       customerPhone: form.customerPhone,
-      startDate: form.startDate,
-      endDate: form.endDate,
+      startDate: lookupMode === 'dates' ? form.startDate : undefined,
+      endDate: lookupMode === 'dates' ? form.endDate : undefined,
+      parsha: lookupMode === 'parsha' ? form.parsha : undefined,
       guests: Number(form.guests || 0),
       areaPreference: form.area,
       vacationType: form.vacationType,
@@ -1870,7 +1887,8 @@ function QuickLookup({
 
     const text = encodeURIComponent([
       `שלום, אשמח לבדוק זמינות עבור ${complex.name}.`,
-      `תאריכים: ${formatDateLine(form.startDate, form.endDate)}`,
+      `תאריכים: ${lookupStartDate && lookupEndDate ? formatDateLine(lookupStartDate, lookupEndDate) : 'לא צוין'}`,
+      lookupMode === 'parsha' ? `פרשה: ${form.parsha}` : '',
       `כמות אורחים: ${form.guests || 'לא צוין'}`,
       form.customerName ? `שם לקוח: ${form.customerName}` : '',
       form.notes ? `הערות: ${form.notes}` : '',
@@ -1881,10 +1899,10 @@ function QuickLookup({
   const getCustomerWhatsappHref = (complex: Complex) => {
     const phone = normalizePhone(form.customerPhone);
     const text = encodeURIComponent(buildComplexOfferText(complex, {
-      startDate: form.startDate,
-      endDate: form.endDate,
+      startDate: lookupStartDate,
+      endDate: lookupEndDate,
       guests: form.guests,
-      notes: form.notes,
+      notes: [lookupMode === 'parsha' ? form.parsha : '', form.notes].filter(Boolean).join(' | '),
     }));
 
     return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
@@ -1895,10 +1913,38 @@ function QuickLookup({
       <section className="card">
         <div className="popup-title-row">
           <h2 className="section-title">בדיקת זמינות מהירה</h2>
+          <div className="mode-switch compact-switch" role="group" aria-label="בדיקה לפי תאריך או פרשה">
+            <button
+              className={lookupMode === 'dates' ? 'active' : ''}
+              type="button"
+              onClick={() => setLookupMode('dates')}
+            >
+              תאריך
+            </button>
+            <button
+              className={lookupMode === 'parsha' ? 'active' : ''}
+              type="button"
+              onClick={() => setLookupMode('parsha')}
+            >
+              פרשה
+            </button>
+          </div>
         </div>
         <div className="form-grid">
-          <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate < value ? '' : form.endDate })} />
-          <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
+          {lookupMode === 'dates' ? (
+            <>
+              <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate < value ? '' : form.endDate })} />
+              <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
+            </>
+          ) : (
+            <SelectField
+              className="full"
+              label="פרשה"
+              value={form.parsha}
+              options={parshaOptions}
+              onChange={value => setForm({ ...form, parsha: value })}
+            />
+          )}
           <Field label="אורחים" value={form.guests} type="number" min="1" onChange={value => setForm({ ...form, guests: value })} />
           <SelectField label="אזור" value={form.area} options={areaPreferenceOptions} onChange={value => setForm({ ...form, area: value })} />
           <SelectField label="סוג נופש" value={form.vacationType} options={['שבת חתן', 'משפחה', 'זוגות', 'קבוצה', 'חג']} onChange={value => setForm({ ...form, vacationType: value })} />
@@ -1917,9 +1963,12 @@ function QuickLookup({
       {checked && (
         <section className="card">
           <h2 className="section-title">תוצאות</h2>
-          <p className="muted">מוצגים רק מתחמים בטווח סביר סביב {form.guests || 0} אורחים.</p>
+          <p className="muted">
+            {lookupStartDate && lookupEndDate ? `${formatDateLine(lookupStartDate, lookupEndDate)} · ` : ''}
+            מוצגים כל המתחמים הפנויים, והרלוונטיים לכמות האורחים מופיעים קודם.
+          </p>
           <div className="list">
-            {results.length === 0 && <p className="muted">לא נמצאו מתחמים בטווח סביר לכמות הזו.</p>}
+            {results.length === 0 && <p className="muted">לא נמצאו מתחמים פנויים לתאריך הזה.</p>}
             {results.map(result => (
               <div className="list-item" key={result.complex.id}>
                 <div className="item-head">
@@ -3418,6 +3467,7 @@ function SelectField({
   labels,
   onChange,
   error,
+  className = '',
 }: {
   label: string;
   value: string;
@@ -3425,9 +3475,10 @@ function SelectField({
   labels?: Record<string, string>;
   onChange: (value: string) => void;
   error?: string;
+  className?: string;
 }) {
   return (
-    <label className="field">
+    <label className={`field ${className}`}>
       <span className="label">{label}</span>
       <select className={`input ${error ? 'input-error' : ''}`} value={value} onChange={event => onChange(event.target.value)}>
         {options.map(option => <option key={option} value={option}>{labels?.[option] ?? option}</option>)}
