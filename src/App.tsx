@@ -50,7 +50,17 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.14';
+const APP_VERSION = '2026.06.21.15';
+
+type PendingAssistantAction = {
+  id: string;
+  type: 'mark_commission_paid';
+  blockId: string;
+  customerName: string;
+  complexName: string;
+  dateLine: string;
+  note: string;
+};
 
 type ParsedStayImport = {
   id: string;
@@ -814,6 +824,91 @@ function describeCloudSaveError(error: unknown): string {
   return `נשמר מקומית, אבל לא בענן. הודעת Supabase: ${rawMessage || 'שגיאה לא ידועה'}`;
 }
 
+function normalizeActionText(value: string): string {
+  return value
+    .replace(/[״"׳']/g, '')
+    .replace(/[-–—.,:;!?()[\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function extractPaymentCustomerName(input: string): string {
+  const normalized = normalizeActionText(input);
+  const explicit = normalized.match(/(?:מקדמה|המקדמה|עמלה|העמלה|תשלום|התשלום)\s+של\s+(.+?)\s+(?:שולמה|שולם|שילמה|שילם|שילמו|שולם לי|התקבל)/);
+  if (explicit?.[1]) return explicit[1].trim();
+
+  return normalized
+    .replace(/\b(?:המקדמה|מקדמה|העמלה|עמלה|התשלום|תשלום)\b/g, ' ')
+    .replace(/\b(?:של|שולמה|שולם|שילמה|שילם|שילמו|התקבל|לי|כבר)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildPaymentAction(input: string, state: AppState): { reply: string; action?: PendingAssistantAction } | null {
+  const normalized = normalizeActionText(input);
+  const looksLikePayment = /(מקדמה|עמלה|תשלום)/.test(normalized) && /(שולמה|שולם|שילמה|שילם|שילמו|התקבל)/.test(normalized);
+  if (!looksLikePayment) return null;
+
+  const customerName = extractPaymentCustomerName(input);
+  if (!customerName) {
+    return { reply: 'הבנתי שמדובר בעדכון תשלום, אבל לא זיהיתי שם לקוח. כתבי למשל: "המקדמה של נגר שולמה".' };
+  }
+
+  const requestedRange = extractDateRangeFromLine(input);
+  const requestedComplex = state.complexes.find(complex =>
+    normalizeActionText(input).includes(normalizeActionText(complex.name))
+  );
+  const matches = state.availabilityBlocks
+    .filter(block => block.customerName && normalizeActionText(block.customerName).includes(customerName))
+    .filter(block => !requestedRange || hasDateConflict(block, requestedRange.startDate, requestedRange.endDate))
+    .filter(block => !requestedComplex || block.complexId === requestedComplex.id)
+    .sort((a, b) => {
+      const paidOrder = Number(Boolean(a.commissionPaid)) - Number(Boolean(b.commissionPaid));
+      if (paidOrder !== 0) return paidOrder;
+      return b.startDate.localeCompare(a.startDate);
+    });
+
+  if (!matches.length) {
+    return { reply: `הבנתי שצריך לסמן תשלום עבור ${customerName}, אבל לא מצאתי סגירה בשם הזה.` };
+  }
+
+  const unpaidMatches = matches.filter(block => !block.commissionPaid);
+  const usefulMatches = unpaidMatches.length ? unpaidMatches : matches;
+  if (usefulMatches.length > 1) {
+    return {
+      reply: [
+        `מצאתי כמה סגירות שמתאימות ל-${customerName}. כדי שלא אעדכן משהו לא נכון, כתבי גם תאריך או שם מתחם:`,
+        ...usefulMatches.slice(0, 5).map(block => {
+          const complex = state.complexes.find(item => item.id === block.complexId);
+          return `• ${block.customerName} - ${complex?.name ?? 'מתחם'} - ${formatDateLine(block.startDate, block.endDate)}`;
+        }),
+      ].join('\n'),
+    };
+  }
+
+  const block = usefulMatches[0];
+  const complex = state.complexes.find(item => item.id === block.complexId);
+  const action: PendingAssistantAction = {
+    id: crypto.randomUUID(),
+    type: 'mark_commission_paid',
+    blockId: block.id,
+    customerName: block.customerName ?? customerName,
+    complexName: complex?.name ?? 'מתחם',
+    dateLine: formatDateLine(block.startDate, block.endDate),
+    note: 'סימון מקדמה/עמלה כשולמה',
+  };
+
+  return {
+    action,
+    reply: [
+      'הבנתי שזו פעולת עדכון, לא רק שאלה.',
+      `אני עומדת לסמן ששולם עבור ${action.customerName}, ${action.complexName}, ${action.dateLine}.`,
+      'אאשר רק אחרי שתלחצי על "אשרי פעולה".',
+    ].join('\n'),
+  };
+}
+
 function buildAssistantReply(input: string, state: AppState): string {
   const normalized = input.trim();
   const explicitDate = normalized.match(/\d{4}-\d{2}-\d{2}/)?.[0];
@@ -1196,23 +1291,25 @@ function AssistantView({
 }) {
   const [input, setInput] = useState('');
   const [draftItems, setDraftItems] = useState<ParsedStayImport[]>([]);
+  const [pendingAction, setPendingAction] = useState<PendingAssistantAction | null>(null);
   const [saving, setSaving] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      text: 'כתבי לי מה לבדוק, או הדביקי רשימה. למשל: "רשימת שבתות פנויות לחודשים הקרובים", "שבתות פנויות באחוזה בהר: 17.7.26", או "14-15/7 - נימני - 1,500 ✅".',
+      text: 'כתבי לי מה לבדוק, להדביק רשימה, או פעולה לאישור. למשל: "מה פנוי לשבוע שני של בין הזמנים", "שבתות פנויות באחוזה בהר: 17.7.26", או "המקדמה של נגר שולמה".',
     },
   ]);
 
   const sendMessage = async (text = input) => {
     const question = text.trim();
     if (!question) return;
+    const paymentAction = buildPaymentAction(question, state);
     const parsedItems = parseAssistantImportList(question, state);
     const availabilityCount = parsedItems.filter(item => item.importType === 'availability').length;
     const stayCount = parsedItems.filter(item => item.importType === 'stay').length;
     const localReply = buildAssistantReply(question, state);
-    const shouldAskGpt = !parsedItems.length && localReply.startsWith('כרגע אני יודעת');
+    const shouldAskGpt = !paymentAction && !parsedItems.length && localReply.startsWith('כרגע אני יודעת');
     const importReply = parsedItems.length
       ? [
           availabilityCount
@@ -1221,9 +1318,11 @@ function AssistantView({
           `${parsedItems.filter(item => item.complexId).length} עם מתחם מזוהה, ${parsedItems.filter(item => !item.complexId).length} בלי מתחם מזוהה.`,
           'תבדקי את הטיוטה למטה ואז לחצי "שמור פריטים מזוהים".',
         ].join('\n')
-      : shouldAskGpt
-        ? 'בודקת עם GPT...'
-        : localReply;
+      : paymentAction
+        ? paymentAction.reply
+        : shouldAskGpt
+          ? 'בודקת עם GPT...'
+          : localReply;
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -1236,7 +1335,15 @@ function AssistantView({
       text: importReply,
     };
 
-    if (parsedItems.length) setDraftItems(parsedItems);
+    if (parsedItems.length) {
+      setDraftItems(parsedItems);
+      setPendingAction(null);
+    } else if (paymentAction?.action) {
+      setPendingAction(paymentAction.action);
+      setDraftItems([]);
+    } else {
+      setPendingAction(null);
+    }
     setMessages(current => [...current, userMessage, assistantMessage]);
     setInput('');
 
@@ -1254,6 +1361,50 @@ function AssistantView({
         ));
       }
     }
+  };
+
+  const confirmPendingAction = async () => {
+    if (!pendingAction) return;
+    const block = state.availabilityBlocks.find(item => item.id === pendingAction.blockId);
+    if (!block) {
+      setMessages(current => [...current, {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        text: 'לא מצאתי יותר את הסגירה הזו. יכול להיות שהנתונים התעדכנו.',
+      }]);
+      setPendingAction(null);
+      return;
+    }
+
+    setSaving(true);
+    const patch: Partial<AvailabilityBlock> = { commissionPaid: true };
+    const updated = { ...block, ...patch, updatedAt: new Date().toISOString() };
+    const nextState = {
+      ...state,
+      availabilityBlocks: state.availabilityBlocks.map(item => item.id === block.id ? updated : item),
+    };
+    persist(nextState);
+
+    let cloudWarning = '';
+    if (session) {
+      try {
+        const cloudBlock = await updateCloudAvailability(session, block.id, patch);
+        persist({
+          ...nextState,
+          availabilityBlocks: nextState.availabilityBlocks.map(item => item.id === block.id ? cloudBlock : item),
+        });
+      } catch {
+        cloudWarning = ' נשמר מקומית, אבל לא הצלחתי לעדכן בענן.';
+      }
+    }
+
+    setMessages(current => [...current, {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      text: `סימנתי ששולם עבור ${pendingAction.customerName}.${cloudWarning}`,
+    }]);
+    setPendingAction(null);
+    setSaving(false);
   };
 
   const saveDraftItems = async () => {
@@ -1351,12 +1502,34 @@ function AssistantView({
             value={input}
             onChange={event => setInput(event.target.value)}
             rows={4}
-            placeholder="לדוגמה: מה פנוי לשבת הקרובה, או הדבקת רשימת כניסות"
+            placeholder="לדוגמה: מה פנוי לשבת הקרובה, או המקדמה של נגר שולמה"
           />
           <button className="primary-btn" type="submit">
             <Send size={16} /> שלח
           </button>
         </form>
+
+        {pendingAction && (
+          <div className="import-preview assistant-action-preview">
+            <div className="item-head">
+              <div>
+                <h3 className="section-title">פעולה לאישור</h3>
+                <p className="muted">אני לא מעדכנת בלי אישור שלך.</p>
+              </div>
+              <span className="pill available">זוהתה פעולה</span>
+            </div>
+            <div className="list-item">
+              <p className="item-title">{pendingAction.note}</p>
+              <span className="muted">{pendingAction.customerName} · {pendingAction.complexName} · {pendingAction.dateLine}</span>
+            </div>
+            <div className="actions">
+              <button className="primary-btn" type="button" disabled={saving} onClick={confirmPendingAction}>
+                {saving ? 'מעדכנת...' : 'אשרי פעולה'}
+              </button>
+              <button className="ghost-btn" type="button" onClick={() => setPendingAction(null)}>ביטול</button>
+            </div>
+          </div>
+        )}
 
         {draftItems.length > 0 && (
           <div className="import-preview">
