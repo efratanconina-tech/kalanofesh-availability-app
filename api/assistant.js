@@ -15,6 +15,7 @@ function limitText(value, maxLength = MAX_MESSAGE_CHARS) {
 function compactState(state) {
   return {
     today: new Date().toISOString().slice(0, 10),
+    shabbatParshas: state?.shabbatParshas || [],
     complexes: limitItems(state?.complexes)
       .filter(complex => complex.active !== false)
       .map(complex => ({

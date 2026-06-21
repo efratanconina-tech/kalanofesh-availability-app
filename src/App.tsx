@@ -50,7 +50,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.12';
+const APP_VERSION = '2026.06.21.13';
 
 type ParsedStayImport = {
   id: string;
@@ -196,6 +196,27 @@ function getParshaRange(parshaLabel: string): { startDate: string; endDate: stri
     endDate: toYMD(addDays(dateFromYMD(labelDate), 1)),
     labelDate,
   };
+}
+
+function normalizeParshaText(value: string): string {
+  return value
+    .replace(/פרשת/g, '')
+    .replace(/פרשה/g, '')
+    .replace(/[״"׳']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findParshaRangeFromText(text: string): ({ parsha: string } & ReturnType<typeof getParshaRange>) | null {
+  const normalized = normalizeParshaText(text);
+  for (const parsha of Object.values(parshaByShabbatDate)) {
+    const normalizedParsha = normalizeParshaText(parsha);
+    if (normalized.includes(normalizedParsha) || normalizedParsha.includes(normalized)) {
+      const range = getParshaRange(parsha);
+      return range ? { parsha, ...range } : null;
+    }
+  }
+  return null;
 }
 
 function formatCalendarHebrewDate(dateStr: string): string {
@@ -723,6 +744,7 @@ function describeCloudSaveError(error: unknown): string {
 function buildAssistantReply(input: string, state: AppState): string {
   const normalized = input.trim();
   const explicitDate = normalized.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  const parshaRange = findParshaRangeFromText(normalized);
 
   if (explicitDate) {
     const endDate = toYMD(addDays(new Date(`${explicitDate}T12:00:00`), 1));
@@ -732,6 +754,19 @@ function buildAssistantReply(input: string, state: AppState): string {
       `לתאריך ${formatDateLine(explicitDate)} מצאתי ${available.length} מתחמים פנויים:`,
       ...available.map(complex => `• ${complex.name} - ${complex.city}, עד ${complex.maxGuests} אורחים`),
     ].join('\n');
+  }
+
+  if (parshaRange && (normalized.includes('פנוי') || normalized.includes('פנויות') || normalized.includes('זמינות'))) {
+    const available = findAvailableComplexes(state, parshaRange.startDate, parshaRange.endDate);
+    if (!available.length) {
+      return `${parshaRange.parsha} (${formatDateLine(parshaRange.labelDate)}): לא מצאתי מתחמים פנויים.`;
+    }
+
+    return [
+      `${parshaRange.parsha} (${formatDateLine(parshaRange.labelDate)}): מצאתי ${available.length} מתחמים פנויים:`,
+      ...available.slice(0, 12).map(complex => `• ${complex.name} - ${complex.city}, עד ${complex.maxGuests} אורחים`),
+      available.length > 12 ? `ועוד ${available.length - 12} מתחמים.` : '',
+    ].filter(Boolean).join('\n');
   }
 
   if (normalized.includes('שבת הקרובה') || normalized.includes('שבת קרובה')) {
@@ -778,7 +813,13 @@ async function askGptAssistant(message: string, state: AppState): Promise<string
   const response = await fetch('/api/assistant', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, state }),
+    body: JSON.stringify({
+      message,
+      state: {
+        ...state,
+        shabbatParshas: Object.entries(parshaByShabbatDate).map(([date, parsha]) => ({ date, parsha })),
+      },
+    }),
   });
 
   if (!response.ok) {
