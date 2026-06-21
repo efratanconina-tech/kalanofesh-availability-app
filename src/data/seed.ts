@@ -1,5 +1,33 @@
 import type { AppState, AvailabilityBlock, Complex } from '../types';
 
+const boutiqueHamayanGallery = [
+  '/media/complexes/boutique-hamayan/cover.jpg',
+  '/media/complexes/boutique-hamayan/photo-01.jpg',
+  '/media/complexes/boutique-hamayan/photo-02.jpg',
+  '/media/complexes/boutique-hamayan/photo-03.jpg',
+  '/media/complexes/boutique-hamayan/photo-04.jpg',
+  '/media/complexes/boutique-hamayan/photo-05.jpg',
+  '/media/complexes/boutique-hamayan/photo-06.jpg',
+  '/media/complexes/boutique-hamayan/photo-07.jpg',
+  '/media/complexes/boutique-hamayan/photo-08.jpg',
+  '/media/complexes/boutique-hamayan/photo-09.jpg',
+  '/media/complexes/boutique-hamayan/photo-10.png',
+  '/media/complexes/boutique-hamayan/photo-11.jpg',
+  '/media/complexes/boutique-hamayan/pool.jpg',
+  '/media/complexes/boutique-hamayan/jacuzzi.jpg',
+  '/media/complexes/boutique-hamayan/room.png',
+  '/media/complexes/boutique-hamayan/outside-01.png',
+  '/media/complexes/boutique-hamayan/outside-02.png',
+  '/media/complexes/boutique-hamayan/outside-03.png',
+  '/media/complexes/boutique-hamayan/outside-04.png',
+  '/media/complexes/boutique-hamayan/outside-05.png',
+  '/media/complexes/boutique-hamayan/outside-06.png',
+  '/media/complexes/boutique-hamayan/kitchen.png',
+  '/media/complexes/boutique-hamayan/hallway.png',
+  '/media/complexes/boutique-hamayan/living-room.png',
+  '/media/complexes/boutique-hamayan/bathroom.png',
+].join('\n');
+
 export const seedComplexes: Complex[] = [
   {
     id: 'boutique-hamayan',
@@ -10,6 +38,9 @@ export const seedComplexes: Complex[] = [
     maxGuests: 100,
     ownerName: '',
     ownerPhone: '',
+    coverImageUrl: '/media/complexes/boutique-hamayan/cover.jpg',
+    videoUrl: '/media/complexes/boutique-hamayan/video-tour.mp4',
+    galleryUrls: boutiqueHamayanGallery,
     internalNotes: 'מתאים במיוחד לשבת חתן וקבוצות גדולות. לבדוק נגישות לפי הרכב האורחים.',
     shabbatNotes: 'אולם אוכל מרכזי, מתאים לשומרי שבת, יציאה מאוחרת לפי תאריך.',
     active: true,

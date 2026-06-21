@@ -1,8 +1,43 @@
 import { seedState } from '../data/seed';
-import type { AppState, AvailabilityBlock, Lead, LeadOffer, Task } from '../types';
+import type { AppState, AvailabilityBlock, Complex, Lead, LeadOffer, Task } from '../types';
 
 const STORAGE_KEY = 'kalanofesh-availability-app-v1';
 const REMOVED_COMPLEX_IDS = new Set(['bresheet', 'pninat-hagalil']);
+const BOUTIQUE_HAMAYAN_GALLERY = [
+  '/media/complexes/boutique-hamayan/cover.jpg',
+  '/media/complexes/boutique-hamayan/photo-01.jpg',
+  '/media/complexes/boutique-hamayan/photo-02.jpg',
+  '/media/complexes/boutique-hamayan/photo-03.jpg',
+  '/media/complexes/boutique-hamayan/photo-04.jpg',
+  '/media/complexes/boutique-hamayan/photo-05.jpg',
+  '/media/complexes/boutique-hamayan/photo-06.jpg',
+  '/media/complexes/boutique-hamayan/photo-07.jpg',
+  '/media/complexes/boutique-hamayan/photo-08.jpg',
+  '/media/complexes/boutique-hamayan/photo-09.jpg',
+  '/media/complexes/boutique-hamayan/photo-10.png',
+  '/media/complexes/boutique-hamayan/photo-11.jpg',
+  '/media/complexes/boutique-hamayan/pool.jpg',
+  '/media/complexes/boutique-hamayan/jacuzzi.jpg',
+  '/media/complexes/boutique-hamayan/room.png',
+  '/media/complexes/boutique-hamayan/outside-01.png',
+  '/media/complexes/boutique-hamayan/outside-02.png',
+  '/media/complexes/boutique-hamayan/outside-03.png',
+  '/media/complexes/boutique-hamayan/outside-04.png',
+  '/media/complexes/boutique-hamayan/outside-05.png',
+  '/media/complexes/boutique-hamayan/outside-06.png',
+  '/media/complexes/boutique-hamayan/kitchen.png',
+  '/media/complexes/boutique-hamayan/hallway.png',
+  '/media/complexes/boutique-hamayan/living-room.png',
+  '/media/complexes/boutique-hamayan/bathroom.png',
+];
+
+const DEFAULT_COMPLEX_MEDIA: Record<string, Pick<Complex, 'coverImageUrl' | 'videoUrl' | 'galleryUrls'>> = {
+  'boutique-hamayan': {
+    coverImageUrl: '/media/complexes/boutique-hamayan/cover.jpg',
+    videoUrl: '/media/complexes/boutique-hamayan/video-tour.mp4',
+    galleryUrls: BOUTIQUE_HAMAYAN_GALLERY.join('\n'),
+  },
+};
 
 function now(): string {
   return new Date().toISOString();
@@ -15,7 +50,19 @@ function clone<T>(value: T): T {
 export function withoutRemovedComplexes(state: AppState): AppState {
   return {
     ...state,
-    complexes: state.complexes.filter(complex => !REMOVED_COMPLEX_IDS.has(complex.id)),
+    complexes: state.complexes
+      .filter(complex => !REMOVED_COMPLEX_IDS.has(complex.id))
+      .map(complex => {
+        const defaults = DEFAULT_COMPLEX_MEDIA[complex.id];
+        if (!defaults) return complex;
+
+        return {
+          ...complex,
+          coverImageUrl: complex.coverImageUrl || defaults.coverImageUrl,
+          videoUrl: complex.videoUrl || defaults.videoUrl,
+          galleryUrls: complex.galleryUrls || defaults.galleryUrls,
+        };
+      }),
     availabilityBlocks: state.availabilityBlocks.filter(block => !REMOVED_COMPLEX_IDS.has(block.complexId)),
     leadOffers: state.leadOffers.filter(offer => !REMOVED_COMPLEX_IDS.has(offer.complexId)),
   };
