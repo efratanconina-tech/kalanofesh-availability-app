@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.20.07';
+const APP_VERSION = '2026.06.21.01';
 
 type ParsedStayImport = {
   id: string;
@@ -67,6 +67,8 @@ type ParsedStayImport = {
   paid: boolean;
   note?: string;
 };
+
+type CalendarMarkAction = AvailabilityStatus | 'clear';
 
 type StayEvent = {
   id: string;
@@ -97,6 +99,11 @@ const statusLabels: Record<AvailabilityStatus, string> = {
   offered: 'הוצע',
   check: 'לבדיקה',
   maintenance: 'תחזוקה',
+};
+
+const calendarMarkLabels: Record<CalendarMarkAction, string> = {
+  ...statusLabels,
+  clear: 'נקה סימון',
 };
 
 const leadStatusLabels: Record<LeadStatus, string> = {
@@ -2521,7 +2528,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear] = useState(now.getFullYear());
   const [calendarMode, setCalendarMode] = useState<'check' | 'mark'>('check');
-  const [status, setStatus] = useState<AvailabilityStatus>('booked');
+  const [markAction, setMarkAction] = useState<CalendarMarkAction>('booked');
   const [selectedDate, setSelectedDate] = useState(todayYMD());
   const [bulkDatesText, setBulkDatesText] = useState('');
   const [bulkError, setBulkError] = useState('');
@@ -2549,6 +2556,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
 
     return matches.find(item => item.status === 'booked')
       ?? matches.find(item => item.status === 'available')
+      ?? matches.find(item => item.status === 'tentative')
       ?? matches[0];
   };
   const dailyAvailability = useMemo(() => (
@@ -2590,6 +2598,13 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     persist(next);
   };
 
+  const isCalendarMarker = (block: AvailabilityBlock) => (
+    !block.leadId &&
+    !block.customerName &&
+    !block.customerPhone &&
+    !block.commissionAmount
+  );
+
   const markComplexDate = async (targetComplexId: string, nextStatus: AvailabilityStatus) => {
     if (isPastDate(selectedDate)) return;
 
@@ -2626,14 +2641,47 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       endDate: toYMD(addDays(date, 1)),
     });
 
+    if (markAction === 'clear') {
+      const blockIds = state.availabilityBlocks
+        .filter(item => isCalendarMarker(item) && item.complexId === complexId && hasDateConflict(item, range.startDate, range.endDate))
+        .map(item => item.id);
+
+      if (!blockIds.length) {
+        setCalendarMarkMessage('אין סימון למחיקה בתאריך הזה.');
+        return;
+      }
+
+      persist({
+        ...state,
+        availabilityBlocks: state.availabilityBlocks.filter(block => !blockIds.includes(block.id)),
+      });
+
+      if (session) {
+        for (const blockId of blockIds) {
+          try {
+            await deleteCloudAvailability(session, blockId);
+          } catch {
+            // Keep the local screen responsive; cloud refresh may restore an item if the delete is rejected.
+          }
+        }
+      }
+
+      setCalendarMarkMessage('הסימון נמחק מהלוח.');
+      return;
+    }
+
     await saveBlock({
       complexId,
       startDate: range.startDate,
       endDate: range.endDate,
-      status,
-      note: status === 'booked' ? 'תפוס אצל בעל הוילה' : 'סומן כפנוי',
+      status: markAction,
+      note: markAction === 'booked'
+        ? 'תפוס אצל בעל הוילה'
+        : markAction === 'available'
+          ? 'סומן כפנוי'
+          : 'אופציונלי',
     });
-    setCalendarMarkMessage(`${statusLabels[status]} נשמר בלוח.`);
+    setCalendarMarkMessage(`${statusLabels[markAction]} נשמר בלוח.`);
   };
 
   const handleCalendarDayClick = (date: Date) => {
@@ -2655,12 +2703,42 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       return;
     }
 
-    const notePrefix = status === 'booked' ? 'תפוס אצל בעל הוילה' : 'סומן כפנוי';
+    if (markAction === 'clear') {
+      const blockIds = state.availabilityBlocks
+        .filter(block => isCalendarMarker(block) && block.complexId === complexId && bulkRanges.some(range => hasDateConflict(block, range.startDate, range.endDate)))
+        .map(block => block.id);
+
+      if (!blockIds.length) {
+        setBulkError('לא נמצאו סימונים למחיקה בתאריכים האלה.');
+        return;
+      }
+
+      persist({
+        ...state,
+        availabilityBlocks: state.availabilityBlocks.filter(block => !blockIds.includes(block.id)),
+      });
+
+      if (session) {
+        for (const blockId of blockIds) {
+          try {
+            await deleteCloudAvailability(session, blockId);
+          } catch {
+            // Local cleanup keeps the list usable even if the cloud delete needs a retry.
+          }
+        }
+      }
+
+      setBulkDatesText('');
+      setCalendarMarkMessage('הסימונים נמחקו מהלוח.');
+      return;
+    }
+
+    const notePrefix = markAction === 'booked' ? 'תפוס אצל בעל הוילה' : markAction === 'available' ? 'סומן כפנוי' : 'אופציונלי';
     const blockDataList = bulkRanges.map(range => ({
         complexId,
         startDate: range.startDate,
         endDate: range.endDate,
-        status,
+        status: markAction,
         note: `${notePrefix} | מקור: ${range.sourceLine}`,
     }));
 
@@ -2679,23 +2757,6 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     }
 
     setBulkDatesText('');
-  };
-
-  const deleteBlock = async (blockId: string) => {
-    if (!window.confirm('למחוק את הסימון/הלקוח הזה מהלוח?')) return;
-
-    persist({
-      ...state,
-      availabilityBlocks: state.availabilityBlocks.filter(block => block.id !== blockId),
-    });
-
-    if (session) {
-      try {
-        await deleteCloudAvailability(session, blockId);
-      } catch {
-        // The local deletion keeps the screen responsive. A later cloud refresh may restore it if the cloud rejected the delete.
-      }
-    }
   };
 
   const moveMonth = (direction: -1 | 1) => {
@@ -2738,7 +2799,13 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
             onChange={setComplexId}
           />
           {calendarMode === 'mark' && (
-            <SelectField label="סימון" value={status} options={['booked', 'available']} labels={statusLabels} onChange={value => setStatus(value as AvailabilityStatus)} />
+            <SelectField
+              label="סימון"
+              value={markAction}
+              options={['booked', 'available', 'tentative', 'clear']}
+              labels={calendarMarkLabels}
+              onChange={value => setMarkAction(value as CalendarMarkAction)}
+            />
           )}
         </div>
         <p className="muted">
@@ -2756,10 +2823,10 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
             <h2 className="section-title">סימון מרובה מרשימה</h2>
             <p className="muted">לסימון רגיל פשוט לחצי על התאריך בלוח. כאן מדביקים רשימה כשיש הרבה תאריכים.</p>
           </div>
-          <span className={`pill ${status}`}>{statusLabels[status]}</span>
+          <span className={`pill ${markAction}`}>{calendarMarkLabels[markAction]}</span>
         </div>
         <div className="bulk-marker">
-          <span className={`pill ${status}`}>{bulkRanges.length} זוהו</span>
+          <span className={`pill ${markAction}`}>{bulkRanges.length} זוהו</span>
           <p className="muted">הדביקי כל תאריך בשורה. שישי/שבת יסומנו אוטומטית כשישי-שבת.</p>
           <textarea
             value={bulkDatesText}
@@ -2791,32 +2858,6 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       </section>
       )}
 
-      {calendarMode === 'mark' && (
-      <section className="card">
-        <h2 className="section-title">סימונים קיימים {selected ? `- ${selected.name}` : ''}</h2>
-        <div className="list">
-          {byDate(blocks).filter(block => block.endDate >= todayYMD()).map(block => (
-            <div className="list-item" key={block.id}>
-              <div className="item-head">
-                <div>
-                  <p className="item-title">{formatDateLine(block.startDate, block.endDate)}</p>
-                  {complexId === 'all' && <span className="muted">{activeComplexes.find(complex => complex.id === block.complexId)?.name ?? 'מתחם'}</span>}
-                  {block.customerName && <span className="muted">{block.customerName}{block.customerPhone ? ` · ${block.customerPhone}` : ''}</span>}
-                </div>
-                <span className={`pill ${block.status}`}>{statusLabels[block.status]}</span>
-              </div>
-              {block.note && <span className="muted">{block.note}</span>}
-              <div className="actions">
-                <button className="ghost-btn danger-btn" type="button" onClick={() => deleteBlock(block.id)}>
-                  <Trash2 size={15} /> מחק
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-      )}
-
       <section className="card">
         <div className="item-head">
           <button className="ghost-btn" type="button" onClick={() => moveMonth(-1)}>הקודם</button>
@@ -2828,7 +2869,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
           {selectedParsha && <span className="calendar-parsha">{selectedParsha}</span>}
           <span><span className="legend-dot free" /> פנוי בוודאות</span>
           <span><span className="legend-dot busy" /> תפוס בוודאות</span>
-          <span><span className="legend-dot optional" /> אופציונלי / לא סומן</span>
+          <span><span className="legend-dot optional" /> אופציונלי</span>
         </div>
         <div className="calendar">
           <div className="calendar-head">
@@ -2843,13 +2884,15 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
                 const dayBlocks = blocks.filter(item => hasDateConflict(item, dateStr, dayEnd));
                 const freeCount = dayBlocks.filter(item => item.status === 'available').length;
                 const busyCount = dayBlocks.filter(item => item.status === 'booked').length;
+                const optionalCount = dayBlocks.filter(item => item.status === 'tentative' || item.status === 'offered' || item.status === 'check').length;
                 const className = [
                   'day',
                   isPastDate(dateStr) ? 'past' : '',
                   dateStr === selectedDate ? 'selected' : '',
                   busyCount > 0 ? 'busy' : '',
                   busyCount === 0 && freeCount > 0 ? 'free' : '',
-                  busyCount === 0 && freeCount === 0 ? 'pending' : '',
+                  busyCount === 0 && freeCount === 0 && optionalCount > 0 ? 'optional' : '',
+                  busyCount === 0 && freeCount === 0 && optionalCount === 0 ? 'pending' : '',
                 ].filter(Boolean).join(' ');
                 return (
                   <button
