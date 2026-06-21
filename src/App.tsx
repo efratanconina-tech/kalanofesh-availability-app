@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.01';
+const APP_VERSION = '2026.06.21.02';
 
 type ParsedStayImport = {
   id: string;
@@ -2605,6 +2605,25 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     !block.commissionAmount
   );
 
+  const deleteCalendarMarkers = async (blockIds: string[], message: string) => {
+    persist({
+      ...state,
+      availabilityBlocks: state.availabilityBlocks.filter(block => !blockIds.includes(block.id)),
+    });
+
+    if (session) {
+      for (const blockId of blockIds) {
+        try {
+          await deleteCloudAvailability(session, blockId);
+        } catch {
+          // Keep the local screen responsive; cloud refresh may restore an item if the delete is rejected.
+        }
+      }
+    }
+
+    setCalendarMarkMessage(message);
+  };
+
   const markComplexDate = async (targetComplexId: string, nextStatus: AvailabilityStatus) => {
     if (isPastDate(selectedDate)) return;
 
@@ -2640,33 +2659,30 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       startDate: dateStr,
       endDate: toYMD(addDays(date, 1)),
     });
+    const matchingCalendarMarkers = state.availabilityBlocks.filter(item =>
+      isCalendarMarker(item) &&
+      item.complexId === complexId &&
+      hasDateConflict(item, range.startDate, range.endDate)
+    );
 
     if (markAction === 'clear') {
-      const blockIds = state.availabilityBlocks
-        .filter(item => isCalendarMarker(item) && item.complexId === complexId && hasDateConflict(item, range.startDate, range.endDate))
-        .map(item => item.id);
+      const blockIds = matchingCalendarMarkers.map(item => item.id);
 
       if (!blockIds.length) {
         setCalendarMarkMessage('אין סימון למחיקה בתאריך הזה.');
         return;
       }
 
-      persist({
-        ...state,
-        availabilityBlocks: state.availabilityBlocks.filter(block => !blockIds.includes(block.id)),
-      });
+      await deleteCalendarMarkers(blockIds, 'הסימון נמחק מהלוח.');
+      return;
+    }
 
-      if (session) {
-        for (const blockId of blockIds) {
-          try {
-            await deleteCloudAvailability(session, blockId);
-          } catch {
-            // Keep the local screen responsive; cloud refresh may restore an item if the delete is rejected.
-          }
-        }
-      }
+    const sameStatusMarkerIds = matchingCalendarMarkers
+      .filter(item => item.status === markAction)
+      .map(item => item.id);
 
-      setCalendarMarkMessage('הסימון נמחק מהלוח.');
+    if (sameStatusMarkerIds.length > 0) {
+      await deleteCalendarMarkers(sameStatusMarkerIds, `${statusLabels[markAction]} בוטל מהלוח.`);
       return;
     }
 
@@ -2713,23 +2729,8 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
         return;
       }
 
-      persist({
-        ...state,
-        availabilityBlocks: state.availabilityBlocks.filter(block => !blockIds.includes(block.id)),
-      });
-
-      if (session) {
-        for (const blockId of blockIds) {
-          try {
-            await deleteCloudAvailability(session, blockId);
-          } catch {
-            // Local cleanup keeps the list usable even if the cloud delete needs a retry.
-          }
-        }
-      }
-
       setBulkDatesText('');
-      setCalendarMarkMessage('הסימונים נמחקו מהלוח.');
+      await deleteCalendarMarkers(blockIds, 'הסימונים נמחקו מהלוח.');
       return;
     }
 
