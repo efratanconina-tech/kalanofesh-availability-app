@@ -50,7 +50,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.07';
+const APP_VERSION = '2026.06.21.08';
 
 type ParsedStayImport = {
   id: string;
@@ -2499,7 +2499,6 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                     {summary && <span className="muted">{summary}</span>}
                   </div>
                   <div className="actions">
-                    <span className={`pill ${block.status}`}>{statusLabels[block.status]}</span>
                     <button
                       className="ghost-btn icon-only catalog-toggle"
                       type="button"
