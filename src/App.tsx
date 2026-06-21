@@ -50,7 +50,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.05';
+const APP_VERSION = '2026.06.21.06';
 
 type ParsedStayImport = {
   id: string;
@@ -872,6 +872,7 @@ function App() {
 
         {tab === 'dashboard' && (
           <>
+            <QuickLookup state={state} persist={persist} session={session} />
             <Dashboard
               totalComplexes={totalComplexes}
               nextShabbatAvailable={nextShabbatAvailable}
@@ -885,7 +886,6 @@ function App() {
               syncStatus={syncStatus}
               connected={Boolean(session)}
             />
-            <QuickLookup state={state} persist={persist} session={session} />
           </>
         )}
 
@@ -905,7 +905,7 @@ function App() {
       </main>
 
       <nav className="tabs" aria-label="ניווט">
-        <TabButton active={tab === 'dashboard'} onClick={() => setTab('dashboard')} icon={<Home size={18} />} label="בית" />
+        <TabButton active={tab === 'dashboard'} onClick={() => setTab('dashboard')} icon={<Search size={18} />} label="בדיקה" />
         <TabButton active={tab === 'catalog'} onClick={() => setTab('catalog')} icon={<Building2 size={18} />} label="מתחמים" />
         <TabButton active={tab === 'stays'} onClick={() => setTab('stays')} icon={<BellRing size={18} />} label="אירוחים" />
         <TabButton active={tab === 'calendar'} onClick={() => setTab('calendar')} icon={<CalendarDays size={18} />} label="לוחות" />
@@ -1734,7 +1734,6 @@ function Dashboard({
             <h2 className="section-title">פעולות מהירות</h2>
           </div>
           <div className="grid">
-            <span className="muted">בדיקת זמינות נמצאת עכשיו בהמשך מסך הבית.</span>
             <button className="secondary-btn" type="button" onClick={() => onGo('leads')}>הוספת פנייה</button>
             <button className="ghost-btn" type="button" onClick={() => onGo('tasks')}>פתיחת משימות</button>
           </div>
