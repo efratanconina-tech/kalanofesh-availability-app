@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Cloud,
   ClipboardList,
+  Fingerprint,
   Home,
   Image,
   ListChecks,
@@ -51,7 +52,8 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.17';
+const APP_VERSION = '2026.06.21.18';
+const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
   id: string;
@@ -61,6 +63,12 @@ type PendingAssistantAction = {
   complexName: string;
   dateLine: string;
   note: string;
+};
+
+type BiometricEnrollment = {
+  credentialId: string;
+  email: string;
+  createdAt: string;
 };
 
 type ParsedStayImport = {
@@ -475,6 +483,105 @@ function getLeadMailHref(lead: Lead, email: string): string {
   const subject = encodeURIComponent(`פנייה: ${lead.customerName}`);
   const body = encodeURIComponent(buildLeadShareText(lead));
   return `mailto:${email}?subject=${subject}&body=${body}`;
+}
+
+function getBiometricEnrollment(): BiometricEnrollment | null {
+  try {
+    const raw = localStorage.getItem(BIOMETRIC_KEY);
+    return raw ? JSON.parse(raw) as BiometricEnrollment : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearBiometricEnrollment(): void {
+  localStorage.removeItem(BIOMETRIC_KEY);
+}
+
+function canUseBiometrics(): boolean {
+  return typeof window !== 'undefined' && window.isSecureContext && Boolean(window.PublicKeyCredential);
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+function createChallenge(): ArrayBuffer {
+  const challenge = new Uint8Array(32);
+  crypto.getRandomValues(challenge);
+  return toArrayBuffer(challenge);
+}
+
+function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let value = '';
+  bytes.forEach(byte => {
+    value += String.fromCharCode(byte);
+  });
+  return btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function base64UrlToArrayBuffer(value: string): ArrayBuffer {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+  const binary = atob(base64);
+  return toArrayBuffer(Uint8Array.from(binary, char => char.charCodeAt(0)));
+}
+
+async function enrollBiometrics(email: string): Promise<void> {
+  if (!canUseBiometrics()) return;
+
+  const credential = await navigator.credentials.create({
+    publicKey: {
+      challenge: createChallenge(),
+      rp: { name: 'KalNofesh' },
+      user: {
+        id: toArrayBuffer(new TextEncoder().encode(email)),
+        name: email,
+        displayName: 'קלנופש',
+      },
+      pubKeyCredParams: [
+        { type: 'public-key', alg: -7 },
+        { type: 'public-key', alg: -257 },
+      ],
+      authenticatorSelection: {
+        residentKey: 'preferred',
+        userVerification: 'required',
+      },
+      attestation: 'none',
+      timeout: 60000,
+    },
+  });
+
+  if (credential instanceof PublicKeyCredential) {
+    localStorage.setItem(BIOMETRIC_KEY, JSON.stringify({
+      credentialId: arrayBufferToBase64Url(credential.rawId),
+      email,
+      createdAt: new Date().toISOString(),
+    }));
+  }
+}
+
+async function unlockWithBiometrics(): Promise<CloudSession> {
+  const enrollment = getBiometricEnrollment();
+  const storedSession = getStoredSession();
+
+  if (!enrollment || !storedSession) {
+    throw new Error('אין כרגע סשן שמור לפתיחה ביומטרית. צריך להתחבר פעם אחת עם סיסמה.');
+  }
+
+  await navigator.credentials.get({
+    publicKey: {
+      challenge: createChallenge(),
+      allowCredentials: [{
+        id: base64UrlToArrayBuffer(enrollment.credentialId),
+        type: 'public-key',
+      }],
+      userVerification: 'required',
+      timeout: 60000,
+    },
+  });
+
+  return storedSession;
 }
 
 function createSlug(value: string, existingIds: string[]): string {
@@ -1050,7 +1157,7 @@ function App() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [lookupOpen, setLookupOpen] = useState(false);
-  const [session, setSession] = useState<CloudSession | null>(() => getStoredSession());
+  const [session, setSession] = useState<CloudSession | null>(() => getBiometricEnrollment() ? null : getStoredSession());
   const [syncStatus, setSyncStatus] = useState('מקומי');
 
   const persist = (nextState: AppState) => {
@@ -1117,6 +1224,7 @@ function App() {
                 type="button"
                 onClick={() => {
                   clearSession();
+                  clearBiometricEnrollment();
                   setSession(null);
                   setSyncStatus('מקומי');
                 }}
@@ -1214,6 +1322,26 @@ function LoginButton({ onLogin }: { onLogin: (session: CloudSession) => void }) 
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [biometricReady, setBiometricReady] = useState(false);
+
+  useEffect(() => {
+    setBiometricReady(canUseBiometrics() && Boolean(getBiometricEnrollment() && getStoredSession()));
+  }, [open]);
+
+  const biometricLogin = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const nextSession = await unlockWithBiometrics();
+      onLogin(nextSession);
+      setOpen(false);
+    } catch (event) {
+      console.error(event);
+      setError(event instanceof Error ? event.message : 'לא הצלחתי לפתוח עם טביעת אצבע. נסי להתחבר בסיסמה.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const submit = async () => {
     if (!isCloudConfigured()) {
@@ -1230,6 +1358,12 @@ function LoginButton({ onLogin }: { onLogin: (session: CloudSession) => void }) 
     setError('');
     try {
       const nextSession = await signIn(email, password);
+      try {
+        await enrollBiometrics(nextSession.email);
+        setBiometricReady(Boolean(getBiometricEnrollment()));
+      } catch (event) {
+        console.info('Biometric enrollment skipped', event);
+      }
       onLogin(nextSession);
       setOpen(false);
     } catch (event) {
@@ -1242,14 +1376,26 @@ function LoginButton({ onLogin }: { onLogin: (session: CloudSession) => void }) 
 
   if (!open) {
     return (
-      <button className="secondary-btn" type="button" onClick={() => setOpen(true)}>
-        כניסה
-      </button>
+      <div className="login-actions">
+        {biometricReady && (
+          <button className="primary-btn icon-only" type="button" onClick={biometricLogin} title="כניסה בטביעת אצבע" aria-label="כניסה בטביעת אצבע">
+            <Fingerprint size={20} />
+          </button>
+        )}
+        <button className="secondary-btn" type="button" onClick={() => setOpen(true)}>
+          כניסה
+        </button>
+      </div>
     );
   }
 
   return (
     <div className="card login-popover">
+      {biometricReady && (
+        <button className="primary-btn biometric-btn" type="button" disabled={loading} onClick={biometricLogin}>
+          <Fingerprint size={19} /> כניסה בטביעת אצבע
+        </button>
+      )}
       <label className="field">
         <span className="label">אימייל</span>
         <input className="input" value={email} onChange={event => setEmail(event.target.value)} />
