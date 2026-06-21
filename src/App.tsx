@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.22';
+const APP_VERSION = '2026.06.21.23';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -1163,7 +1163,7 @@ function App() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [lookupOpen, setLookupOpen] = useState(false);
-  const [session, setSession] = useState<CloudSession | null>(() => getBiometricEnrollment() ? null : getStoredSession());
+  const [session, setSession] = useState<CloudSession | null>(() => getStoredSession());
   const [syncStatus, setSyncStatus] = useState('מקומי');
 
   const persist = (nextState: AppState) => {
