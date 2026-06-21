@@ -24,6 +24,7 @@ import {
   Upload,
   Users,
   Video,
+  X,
 } from 'lucide-react';
 import type { AppState, AvailabilityBlock, AvailabilityStatus, Complex, InvoiceStatus, Lead, LeadStatus } from './types';
 import { createAvailabilityBlock, createLead, createTask, hasDateConflict, loadState, saveState, withoutRemovedComplexes } from './lib/store';
@@ -47,9 +48,9 @@ import {
   type CloudSession,
 } from './lib/supabaseRest';
 
-type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
+type Tab = 'dashboard' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.03';
+const APP_VERSION = '2026.06.21.04';
 
 type ParsedStayImport = {
   id: string;
@@ -786,6 +787,7 @@ async function askGptAssistant(message: string, state: AppState): Promise<string
 function App() {
   const [state, setState] = useState<AppState>(() => loadState());
   const [tab, setTab] = useState<Tab>('dashboard');
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [session, setSession] = useState<CloudSession | null>(() => getStoredSession());
   const [syncStatus, setSyncStatus] = useState('מקומי');
 
@@ -892,7 +894,6 @@ function App() {
           </section>
         )}
 
-        {tab === 'assistant' && <AssistantView state={state} persist={persist} session={session} />}
         {tab === 'catalog' && <CatalogView state={state} persist={persist} session={session} />}
         {tab === 'lookup' && <QuickLookup state={state} persist={persist} session={session} />}
         {tab === 'stays' && <StaysView state={state} persist={persist} session={session} />}
@@ -903,7 +904,6 @@ function App() {
 
       <nav className="tabs" aria-label="ניווט">
         <TabButton active={tab === 'dashboard'} onClick={() => setTab('dashboard')} icon={<Home size={18} />} label="בית" />
-        <TabButton active={tab === 'assistant'} onClick={() => setTab('assistant')} icon={<MessageCircle size={18} />} label="צ׳אט" />
         <TabButton active={tab === 'catalog'} onClick={() => setTab('catalog')} icon={<Building2 size={18} />} label="מתחמים" />
         <TabButton active={tab === 'lookup'} onClick={() => setTab('lookup')} icon={<Search size={18} />} label="בדיקה" />
         <TabButton active={tab === 'stays'} onClick={() => setTab('stays')} icon={<BellRing size={18} />} label="אירוחים" />
@@ -911,6 +911,27 @@ function App() {
         <TabButton active={tab === 'leads'} onClick={() => setTab('leads')} icon={<Users size={18} />} label="לקוחות" />
         <TabButton active={tab === 'tasks'} onClick={() => setTab('tasks')} icon={<ListChecks size={18} />} label="משימות" />
       </nav>
+
+      <button
+        className="assistant-fab"
+        type="button"
+        onClick={() => setAssistantOpen(true)}
+        aria-label="פתח עוזר אישי"
+      >
+        <MessageCircle size={22} />
+        <span>עוזר אישי</span>
+      </button>
+
+      {assistantOpen && (
+        <div className="assistant-overlay" role="dialog" aria-modal="true" aria-label="עוזר אישי" onClick={() => setAssistantOpen(false)}>
+          <div className="assistant-popup" onClick={event => event.stopPropagation()}>
+            <button className="assistant-close" type="button" onClick={() => setAssistantOpen(false)} aria-label="סגור עוזר אישי">
+              <X size={20} />
+            </button>
+            <AssistantView state={state} persist={persist} session={session} compact />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -989,10 +1010,12 @@ function AssistantView({
   state,
   persist,
   session,
+  compact = false,
 }: {
   state: AppState;
   persist: (state: AppState) => void;
   session: CloudSession | null;
+  compact?: boolean;
 }) {
   const [input, setInput] = useState('');
   const [draftItems, setDraftItems] = useState<ParsedStayImport[]>([]);
@@ -1108,12 +1131,12 @@ function AssistantView({
   };
 
   return (
-    <div className="grid">
+    <div className={compact ? 'assistant-compact' : 'grid'}>
       <section className="card assistant-card">
         <div className="item-head">
           <div>
-            <h2 className="section-title">צ׳אט ניהול</h2>
-            <p className="muted">הצ׳אט קורא את נתוני הזמינות שכבר שמורים באפליקציה ומחזיר תשובות תפעוליות.</p>
+            <h2 className="section-title">{compact ? 'עוזר אישי' : 'צ׳אט ניהול'}</h2>
+            <p className="muted">קורא את נתוני הזמינות שכבר שמורים באפליקציה ומחזיר תשובות תפעוליות.</p>
           </div>
           <span className="pill check">ניסוי ראשון</span>
         </div>
