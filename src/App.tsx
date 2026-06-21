@@ -50,7 +50,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.10';
+const APP_VERSION = '2026.06.21.11';
 
 type ParsedStayImport = {
   id: string;
@@ -1841,14 +1841,18 @@ function QuickLookup({
         const conflicts = state.availabilityBlocks.filter(block =>
           block.complexId === complex.id && hasDateConflict(block, lookupStartDate, lookupEndDate)
         );
+        const activeConflicts = conflicts.filter(block => block.status !== 'available');
+        const hasBookedConflict = activeConflicts.some(block => ['booked', 'maintenance'].includes(block.status));
+        const hasOptionalConflict = activeConflicts.some(block => ['tentative', 'offered', 'check'].includes(block.status));
+        const availabilityRank = hasBookedConflict ? 2 : hasOptionalConflict ? 1 : 0;
         const guestFit = getGuestFit(complex.maxGuests, requestedGuests);
         const capacityOk = complex.maxGuests >= requestedGuests;
         const areaOk = form.area === 'לא משנה' || complex.area === form.area;
-        const score = guestFit.score + (capacityOk ? 20 : 0) + (areaOk ? 30 : 0) + (conflicts.length === 0 ? 30 : 0);
-        return { complex, conflicts, capacityOk, areaOk, guestFit, score };
+        const score = guestFit.score + (capacityOk ? 20 : 0) + (areaOk ? 30 : 0) + (availabilityRank === 0 ? 30 : availabilityRank === 1 ? 10 : 0);
+        return { complex, conflicts: activeConflicts, availabilityRank, capacityOk, areaOk, guestFit, score };
       })
-      .filter(result => result.conflicts.length === 0)
       .sort((a, b) => {
+        if (a.availabilityRank !== b.availabilityRank) return a.availabilityRank - b.availabilityRank;
         const areaOrder = Number(!a.areaOk) - Number(!b.areaOk);
         if (areaOrder !== 0) return areaOrder;
         return b.score - a.score;
@@ -1965,11 +1969,14 @@ function QuickLookup({
           <h2 className="section-title">תוצאות</h2>
           <p className="muted">
             {lookupStartDate && lookupEndDate ? `${formatDateLine(lookupStartDate, lookupEndDate)} · ` : ''}
-            מוצגים כל המתחמים הפנויים, והרלוונטיים לכמות האורחים מופיעים קודם.
+            מוצגים כל המתחמים: פנויים למעלה, אופציונליים באמצע, תפוסים למטה.
           </p>
           <div className="list">
-            {results.length === 0 && <p className="muted">לא נמצאו מתחמים פנויים לתאריך הזה.</p>}
-            {results.map(result => (
+            {results.length === 0 && <p className="muted">לא נמצאו מתחמים להצגה.</p>}
+            {results.map(result => {
+              const availabilityLabel = result.availabilityRank === 0 ? 'פנוי' : result.availabilityRank === 1 ? 'אופציונלי' : 'תפוס';
+              const availabilityIconClass = result.availabilityRank === 0 ? 'open' : result.availabilityRank === 1 ? 'optional' : 'busy';
+              return (
               <div className="list-item" key={result.complex.id}>
                 <div className="item-head">
                   <div>
@@ -1977,10 +1984,11 @@ function QuickLookup({
                     <span className="muted">{result.complex.city} · עד {result.complex.maxGuests} אורחים · {result.complex.rooms} חדרים</span>
                     <span className="muted">{result.guestFit.label}</span>
                   </div>
-                  <span className={`availability-icon ${result.conflicts.length ? 'busy' : 'open'}`} title={result.conflicts.length ? 'יש סימון בלוח לתאריכים האלה' : 'אין סימון בלוח לתאריכים האלה'}>
-                    {result.conflicts.length ? <CalendarX size={18} /> : <CalendarCheck size={18} />}
+                  <span className={`availability-icon ${availabilityIconClass}`} title={availabilityLabel}>
+                    {result.availabilityRank === 2 ? <CalendarX size={18} /> : <CalendarCheck size={18} />}
                   </span>
                 </div>
+                <span className={`pill ${result.availabilityRank === 0 ? 'available' : result.availabilityRank === 1 ? 'tentative' : 'booked'}`}>{availabilityLabel}</span>
                 {result.conflicts.length > 0 && (
                   <div className="muted">
                     {result.conflicts.map(block => `${statusLabels[block.status]}: ${formatDateLine(block.startDate, block.endDate)}`).join(' | ')}
@@ -2000,7 +2008,8 @@ function QuickLookup({
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
