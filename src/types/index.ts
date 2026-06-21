@@ -25,6 +25,12 @@ export interface Complex {
   videoUrl?: string;
   galleryUrls?: string;
   salesNote?: string;
+  priceWeekday?: string;
+  priceShabbat?: string;
+  priceWeekend?: string;
+  priceBeinHazmanim?: string;
+  priceHoliday?: string;
+  priceNotes?: string;
   internalNotes?: string;
   shabbatNotes?: string;
   active: boolean;

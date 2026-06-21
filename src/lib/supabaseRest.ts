@@ -232,6 +232,12 @@ interface ComplexRow {
   video_url?: string | null;
   gallery_urls?: string | null;
   sales_note?: string | null;
+  price_weekday?: string | null;
+  price_shabbat?: string | null;
+  price_weekend?: string | null;
+  price_bein_hazmanim?: string | null;
+  price_holiday?: string | null;
+  price_notes?: string | null;
   internal_notes?: string | null;
   shabbat_notes?: string | null;
   active: boolean;
@@ -307,6 +313,12 @@ function fromComplexRow(row: ComplexRow): Complex {
     videoUrl: row.video_url ?? undefined,
     galleryUrls: row.gallery_urls ?? undefined,
     salesNote: row.sales_note ?? undefined,
+    priceWeekday: row.price_weekday ?? undefined,
+    priceShabbat: row.price_shabbat ?? undefined,
+    priceWeekend: row.price_weekend ?? undefined,
+    priceBeinHazmanim: row.price_bein_hazmanim ?? undefined,
+    priceHoliday: row.price_holiday ?? undefined,
+    priceNotes: row.price_notes ?? undefined,
     internalNotes: row.internal_notes ?? undefined,
     shabbatNotes: row.shabbat_notes ?? undefined,
     active: row.active,
@@ -433,6 +445,12 @@ function toComplexRow(data: Complex) {
     video_url: data.videoUrl,
     gallery_urls: data.galleryUrls,
     sales_note: data.salesNote,
+    price_weekday: data.priceWeekday,
+    price_shabbat: data.priceShabbat,
+    price_weekend: data.priceWeekend,
+    price_bein_hazmanim: data.priceBeinHazmanim,
+    price_holiday: data.priceHoliday,
+    price_notes: data.priceNotes,
     internal_notes: data.internalNotes,
     shabbat_notes: data.shabbatNotes,
     active: data.active,

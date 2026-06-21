@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.20';
+const APP_VERSION = '2026.06.21.21';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -910,6 +910,12 @@ function buildComplexShareText(complex: Complex): string {
     `${complex.city} | ${complex.area}`,
     `${complex.rooms} חדרים | עד ${complex.maxGuests} אורחים`,
     complex.salesNote,
+    complex.priceWeekday ? `עלות יום חול: ${complex.priceWeekday}` : '',
+    complex.priceShabbat ? `עלות שבת: ${complex.priceShabbat}` : '',
+    complex.priceWeekend ? `עלות סופ״ש: ${complex.priceWeekend}` : '',
+    complex.priceBeinHazmanim ? `עלות בין הזמנים: ${complex.priceBeinHazmanim}` : '',
+    complex.priceHoliday ? `עלות חגים: ${complex.priceHoliday}` : '',
+    complex.priceNotes ? `הערות מחיר: ${complex.priceNotes}` : '',
     complex.shabbatNotes ? `פרטי שבת: ${complex.shabbatNotes}` : '',
     shareableImages.length ? `תמונות: ${shareableImages.join(' | ')}` : '',
     complex.videoUrl ? `וידאו: ${complex.videoUrl}` : '',
@@ -1758,6 +1764,12 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
     maxGuests: '0',
     ownerName: '',
     ownerPhone: '',
+    priceWeekday: '',
+    priceShabbat: '',
+    priceWeekend: '',
+    priceBeinHazmanim: '',
+    priceHoliday: '',
+    priceNotes: '',
   });
   const complexes = useMemo(
     () => state.complexes.filter(complex =>
@@ -1772,6 +1784,12 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
         complex.ownerName,
         complex.ownerPhone,
         complex.salesNote,
+        complex.priceWeekday,
+        complex.priceShabbat,
+        complex.priceWeekend,
+        complex.priceBeinHazmanim,
+        complex.priceHoliday,
+        complex.priceNotes,
         complex.internalNotes,
         complex.shabbatNotes,
       ])
@@ -1820,6 +1838,12 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
       maxGuests: Number(newComplexForm.maxGuests || 0),
       ownerName: newComplexForm.ownerName.trim(),
       ownerPhone: newComplexForm.ownerPhone.trim(),
+      priceWeekday: newComplexForm.priceWeekday.trim(),
+      priceShabbat: newComplexForm.priceShabbat.trim(),
+      priceWeekend: newComplexForm.priceWeekend.trim(),
+      priceBeinHazmanim: newComplexForm.priceBeinHazmanim.trim(),
+      priceHoliday: newComplexForm.priceHoliday.trim(),
+      priceNotes: newComplexForm.priceNotes.trim(),
       active: true,
     };
 
@@ -1844,6 +1868,12 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
       maxGuests: '0',
       ownerName: '',
       ownerPhone: '',
+      priceWeekday: '',
+      priceShabbat: '',
+      priceWeekend: '',
+      priceBeinHazmanim: '',
+      priceHoliday: '',
+      priceNotes: '',
     });
   };
 
@@ -2023,6 +2053,12 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
               <Field label="מקסימום אורחים" value={newComplexForm.maxGuests} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, maxGuests: value }))} />
               <Field label="שם בעל מתחם" value={newComplexForm.ownerName} onChange={value => setNewComplexForm(current => ({ ...current, ownerName: value }))} />
               <Field label="טלפון בעל מתחם" value={newComplexForm.ownerPhone} onChange={value => setNewComplexForm(current => ({ ...current, ownerPhone: value }))} />
+              <Field label="עלות ליום חול" value={newComplexForm.priceWeekday} onChange={value => setNewComplexForm(current => ({ ...current, priceWeekday: value }))} placeholder="לדוגמה: 2,500-3,500" />
+              <Field label="עלות לשבת" value={newComplexForm.priceShabbat} onChange={value => setNewComplexForm(current => ({ ...current, priceShabbat: value }))} placeholder="לדוגמה: 12,000-15,000" />
+              <Field label="עלות לסופ״ש" value={newComplexForm.priceWeekend} onChange={value => setNewComplexForm(current => ({ ...current, priceWeekend: value }))} placeholder="חמישי-מוצ״ש / שישי-מוצ״ש" />
+              <Field label="עלות לבין הזמנים" value={newComplexForm.priceBeinHazmanim} onChange={value => setNewComplexForm(current => ({ ...current, priceBeinHazmanim: value }))} />
+              <Field label="עלות לחגים" value={newComplexForm.priceHoliday} onChange={value => setNewComplexForm(current => ({ ...current, priceHoliday: value }))} />
+              <Field label="הערות מחיר" value={newComplexForm.priceNotes} onChange={value => setNewComplexForm(current => ({ ...current, priceNotes: value }))} />
               <div className="actions full">
                 <button className="primary-btn" type="button" onClick={addComplex}>
                   <Plus size={16} /> שמור מתחם
@@ -2045,6 +2081,13 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
               <div>
                 <h2 className="section-title">{complex.name}</h2>
                 <p className="muted">{complex.city} · {complex.area} · {complex.rooms} חדרים · עד {complex.maxGuests} אורחים</p>
+                {(complex.priceShabbat || complex.priceWeekday || complex.priceWeekend) && (
+                  <div className="price-pills">
+                    {complex.priceShabbat && <span className="pill budget">שבת: {complex.priceShabbat}</span>}
+                    {complex.priceWeekday && <span className="pill clear">יום חול: {complex.priceWeekday}</span>}
+                    {complex.priceWeekend && <span className="pill offered">סופ״ש: {complex.priceWeekend}</span>}
+                  </div>
+                )}
               </div>
               <div className="actions">
                 {complex.ownerPhone && (
@@ -2098,6 +2141,12 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
                   <Field label="מקסימום אורחים" value={String(complex.maxGuests)} type="number" min="0" onChange={value => updateComplex(complex, { maxGuests: Number(value || 0) })} />
                   <Field label="שם בעל מתחם" value={complex.ownerName ?? ''} onChange={value => updateComplex(complex, { ownerName: value })} />
                   <Field label="טלפון בעל מתחם" value={complex.ownerPhone ?? ''} onChange={value => updateComplex(complex, { ownerPhone: value })} />
+                  <Field label="עלות ליום חול" value={complex.priceWeekday ?? ''} onChange={value => updateComplex(complex, { priceWeekday: value })} />
+                  <Field label="עלות לשבת" value={complex.priceShabbat ?? ''} onChange={value => updateComplex(complex, { priceShabbat: value })} />
+                  <Field label="עלות לסופ״ש" value={complex.priceWeekend ?? ''} onChange={value => updateComplex(complex, { priceWeekend: value })} />
+                  <Field label="עלות לבין הזמנים" value={complex.priceBeinHazmanim ?? ''} onChange={value => updateComplex(complex, { priceBeinHazmanim: value })} />
+                  <Field label="עלות לחגים" value={complex.priceHoliday ?? ''} onChange={value => updateComplex(complex, { priceHoliday: value })} />
+                  <Field label="הערות מחיר" value={complex.priceNotes ?? ''} onChange={value => updateComplex(complex, { priceNotes: value })} />
                   <Field label="קישור תמונה" value={complex.coverImageUrl ?? ''} onChange={value => updateComplex(complex, { coverImageUrl: value })} />
                   <Field label="קישור וידאו" value={complex.videoUrl ?? ''} onChange={value => updateComplex(complex, { videoUrl: value })} />
                   <Field className="full" label="קישורי גלריה" value={complex.galleryUrls ?? ''} onChange={value => updateComplex(complex, { galleryUrls: value })} placeholder="אפשר להדביק כמה קישורים, כל קישור בשורה" />

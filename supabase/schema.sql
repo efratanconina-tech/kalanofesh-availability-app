@@ -22,6 +22,12 @@ create table if not exists public.complexes (
   video_url text,
   gallery_urls text,
   sales_note text,
+  price_weekday text,
+  price_shabbat text,
+  price_weekend text,
+  price_bein_hazmanim text,
+  price_holiday text,
+  price_notes text,
   internal_notes text,
   shabbat_notes text,
   active boolean not null default true,
@@ -33,6 +39,12 @@ alter table public.complexes add column if not exists cover_image_url text;
 alter table public.complexes add column if not exists video_url text;
 alter table public.complexes add column if not exists gallery_urls text;
 alter table public.complexes add column if not exists sales_note text;
+alter table public.complexes add column if not exists price_weekday text;
+alter table public.complexes add column if not exists price_shabbat text;
+alter table public.complexes add column if not exists price_weekend text;
+alter table public.complexes add column if not exists price_bein_hazmanim text;
+alter table public.complexes add column if not exists price_holiday text;
+alter table public.complexes add column if not exists price_notes text;
 
 create table if not exists public.leads (
   id uuid primary key default gen_random_uuid(),
