@@ -50,7 +50,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.08';
+const APP_VERSION = '2026.06.21.09';
 
 type ParsedStayImport = {
   id: string;
@@ -2467,7 +2467,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
         <div className="item-head">
           <div>
             <h2 className="section-title">רשימת סגירות</h2>
-            <p className="muted">כאן אפשר לעדכן סטטוס, עמלה, תשלום וחשבונית לסגירות קיימות.</p>
+            <p className="muted">כאן אפשר לעדכן עמלה, תשלום וחשבונית לסגירות קיימות.</p>
           </div>
           <span className="pill check">{closureBlocks.length} סגירות</span>
         </div>
@@ -2516,13 +2516,6 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                     {block.customerPhone && <span className="muted">{block.customerPhone}</span>}
                     {block.note && <span className="muted">{block.note}</span>}
                     <div className="form-grid">
-                      <SelectField
-                        label="סטטוס"
-                        value={block.status}
-                        options={['booked', 'tentative', 'offered', 'check', 'maintenance']}
-                        labels={statusLabels}
-                        onChange={value => updateClosureBlock(block, { status: value as AvailabilityStatus })}
-                      />
                       <Field
                         label="עמלה"
                         value={block.commissionAmount ?? ''}
