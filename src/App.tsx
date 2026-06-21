@@ -49,7 +49,7 @@ import {
 
 type Tab = 'dashboard' | 'assistant' | 'catalog' | 'lookup' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.02';
+const APP_VERSION = '2026.06.21.03';
 
 type ParsedStayImport = {
   id: string;
@@ -2576,6 +2576,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     free: dailyAvailability.filter(item => item.bucket === 'free'),
     busy: dailyAvailability.filter(item => item.bucket === 'busy'),
     optional: dailyAvailability.filter(item => item.bucket === 'optional'),
+    possible: dailyAvailability.filter(item => item.bucket !== 'busy'),
   };
   const bulkRanges = useMemo(() => parseBulkDateRanges(bulkDatesText), [bulkDatesText]);
 
@@ -2881,19 +2882,26 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
               {week.map((day, dayIndex) => {
                 if (!day) return <span key={dayIndex} />;
                 const dateStr = toYMD(day);
-                const dayEnd = getDayEnd(day);
-                const dayBlocks = blocks.filter(item => hasDateConflict(item, dateStr, dayEnd));
-                const freeCount = dayBlocks.filter(item => item.status === 'available').length;
-                const busyCount = dayBlocks.filter(item => item.status === 'booked').length;
-                const optionalCount = dayBlocks.filter(item => item.status === 'tentative' || item.status === 'offered' || item.status === 'check').length;
+                const dayAvailability = visibleComplexes.map(complex => {
+                  const dayBlock = getBlockForDate(complex.id, dateStr);
+                  return dayBlock?.status === 'booked'
+                    ? 'busy'
+                    : dayBlock?.status === 'available'
+                      ? 'free'
+                      : 'optional';
+                });
+                const freeCount = dayAvailability.filter(item => item === 'free').length;
+                const busyCount = dayAvailability.filter(item => item === 'busy').length;
+                const optionalCount = dayAvailability.filter(item => item === 'optional').length;
+                const allVisibleBusy = visibleComplexes.length > 0 && busyCount === visibleComplexes.length;
                 const className = [
                   'day',
                   isPastDate(dateStr) ? 'past' : '',
                   dateStr === selectedDate ? 'selected' : '',
-                  busyCount > 0 ? 'busy' : '',
-                  busyCount === 0 && freeCount > 0 ? 'free' : '',
-                  busyCount === 0 && freeCount === 0 && optionalCount > 0 ? 'optional' : '',
-                  busyCount === 0 && freeCount === 0 && optionalCount === 0 ? 'pending' : '',
+                  allVisibleBusy ? 'busy' : '',
+                  !allVisibleBusy && freeCount > 0 ? 'free' : '',
+                  !allVisibleBusy && freeCount === 0 && optionalCount > 0 ? 'optional' : '',
+                  !allVisibleBusy && freeCount === 0 && optionalCount === 0 ? 'pending' : '',
                 ].filter(Boolean).join(' ');
                 return (
                   <button
@@ -2917,21 +2925,23 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       <section className="card">
         <div className="item-head">
           <div>
-            <h2 className="section-title">מקומות פנויים בתאריך שנבחר</h2>
+            <h2 className="section-title">מתחמים שיכולים להיות פנויים בתאריך שנבחר</h2>
             <p className="muted">{formatDateLine(selectedDate)}</p>
           </div>
-          <span className="pill available">{selectedSummary.free.length} פנויים</span>
+          <span className="pill available">{selectedSummary.possible.length} אפשריים</span>
         </div>
         <div className="availability-grid">
-          {selectedSummary.free.length === 0 && <p className="muted">אין מתחמים שסומנו כפנויים בוודאות בתאריך הזה.</p>}
-          {selectedSummary.free.map(({ complex, block }) => (
-              <div className="availability-item free" key={complex.id}>
+          {selectedSummary.possible.length === 0 && <p className="muted">כל המתחמים תפוסים בוודאות בתאריך הזה.</p>}
+          {selectedSummary.possible.map(({ complex, block, bucket }) => (
+              <div className={`availability-item ${bucket === 'free' ? 'free' : 'optional'}`} key={complex.id}>
                 <div className="item-head">
                   <div>
                     <p className="item-title">{complex.name}</p>
                     <span className="muted">{complex.city} · עד {complex.maxGuests} אורחים · {complex.rooms} חדרים</span>
                   </div>
-                  <span className="pill available">פנוי בוודאות</span>
+                  <span className={`pill ${bucket === 'free' ? 'available' : 'tentative'}`}>
+                    {bucket === 'free' ? 'פנוי בוודאות' : block ? statusLabels[block.status] : 'יכול להיות פנוי'}
+                  </span>
                 </div>
                 {block?.note && <span className="muted">{block.note}</span>}
                 <div className="actions">
