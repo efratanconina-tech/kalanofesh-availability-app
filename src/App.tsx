@@ -12,6 +12,7 @@ import {
   Home,
   Image,
   ListChecks,
+  Mail,
   MessageCircle,
   Pencil,
   Phone,
@@ -50,7 +51,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.16';
+const APP_VERSION = '2026.06.21.17';
 
 type PendingAssistantAction = {
   id: string;
@@ -454,6 +455,26 @@ function buildLeadShareText(lead: Lead): string {
     lead.notes ? `הערות: ${lead.notes}` : '',
     `סטטוס: ${leadStatusLabels[lead.status]}`,
   ].filter(Boolean).join('\n');
+}
+
+function extractEmail(value: string): string {
+  return value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? '';
+}
+
+function getLeadEmail(lead: Lead): string {
+  return extractEmail([lead.customerName, lead.customerPhone, lead.notes].filter(Boolean).join(' '));
+}
+
+function getLeadWhatsappHref(lead: Lead): string {
+  const phone = normalizePhone(lead.customerPhone);
+  const text = encodeURIComponent(buildLeadShareText(lead));
+  return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+}
+
+function getLeadMailHref(lead: Lead, email: string): string {
+  const subject = encodeURIComponent(`פנייה: ${lead.customerName}`);
+  const body = encodeURIComponent(buildLeadShareText(lead));
+  return `mailto:${email}?subject=${subject}&body=${body}`;
 }
 
 function createSlug(value: string, existingIds: string[]): string {
@@ -3614,37 +3635,49 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
         )}
         <div className="list">
           {filteredLeads.length === 0 && <p className="muted">לא נמצאו פניות מתאימות.</p>}
-          {filteredLeads.map(lead => (
-            <div className="list-item" key={lead.id}>
-              <div className="item-head">
-                <p className="item-title">{lead.customerName}</p>
-                <div className="actions lead-meta-pills">
-                  <span className={`pill budget ${lead.budget ? '' : 'missing'}`}>
-                    {lead.budget ? `תקציב: ${lead.budget}` : 'ללא תקציב'}
-                  </span>
-                  <span className="pill offered">{leadStatusLabels[lead.status]}</span>
+          {filteredLeads.map(lead => {
+            const leadEmail = getLeadEmail(lead);
+
+            return (
+              <div className="list-item" key={lead.id}>
+                <div className="item-head">
+                  <p className="item-title">{lead.customerName}</p>
+                  <div className="actions lead-meta-pills">
+                    <span className={`pill budget ${lead.budget ? '' : 'missing'}`}>
+                      {lead.budget ? `תקציב: ${lead.budget}` : 'ללא תקציב'}
+                    </span>
+                    <span className="pill offered">{leadStatusLabels[lead.status]}</span>
+                  </div>
+                </div>
+                <span className="muted">נפתחה: {lead.createdAt ? formatGregorianDate(lead.createdAt.slice(0, 10)) : 'לא ידוע'}</span>
+                <span className="muted">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
+                <span className="muted">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}{lead.budget ? ` · תקציב: ${lead.budget}` : ''}</span>
+                {lead.notes && <span className="muted">{lead.notes}</span>}
+                <div className="actions lead-actions">
+                  <a className="secondary-btn icon-only" href={`tel:${lead.customerPhone}`} title="שיחה" aria-label={`שיחה אל ${lead.customerName}`}>
+                    <Phone size={17} />
+                  </a>
+                  <a className="primary-btn icon-only" href={getLeadWhatsappHref(lead)} target="_blank" rel="noreferrer" title="WhatsApp" aria-label={`WhatsApp אל ${lead.customerName}`}>
+                    <MessageCircle size={17} />
+                  </a>
+                  {leadEmail && (
+                    <a className="ghost-btn icon-only" href={getLeadMailHref(lead, leadEmail)} title="מייל" aria-label={`מייל אל ${lead.customerName}`}>
+                      <Mail size={17} />
+                    </a>
+                  )}
+                  <button className="ghost-btn icon-only" type="button" onClick={() => shareLead(lead)} title="שיתוף פנייה" aria-label={`שיתוף פנייה של ${lead.customerName}`}>
+                    <Share2 size={17} />
+                  </button>
+                  <button className="ghost-btn icon-only" type="button" onClick={() => editLead(lead.id)} title="עריכה" aria-label={`עריכת פנייה של ${lead.customerName}`}>
+                    <Pencil size={17} />
+                  </button>
+                  <button className="ghost-btn danger-btn icon-only" type="button" onClick={() => deleteLead(lead.id)} title="מחיקה" aria-label={`מחיקת פנייה של ${lead.customerName}`}>
+                    <Trash2 size={17} />
+                  </button>
                 </div>
               </div>
-              <span className="muted">נפתחה: {lead.createdAt ? formatGregorianDate(lead.createdAt.slice(0, 10)) : 'לא ידוע'}</span>
-              <span className="muted">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
-              <span className="muted">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}{lead.budget ? ` · תקציב: ${lead.budget}` : ''}</span>
-              {lead.notes && <span className="muted">{lead.notes}</span>}
-              <div className="actions lead-actions">
-                <a className="secondary-btn icon-only" href={`tel:${lead.customerPhone}`} title="שיחה" aria-label={`שיחה אל ${lead.customerName}`}>
-                  <Phone size={17} />
-                </a>
-                <button className="ghost-btn icon-only" type="button" onClick={() => shareLead(lead)} title="שיתוף פנייה" aria-label={`שיתוף פנייה של ${lead.customerName}`}>
-                  <Share2 size={17} />
-                </button>
-                <button className="ghost-btn icon-only" type="button" onClick={() => editLead(lead.id)} title="עריכה" aria-label={`עריכת פנייה של ${lead.customerName}`}>
-                  <Pencil size={17} />
-                </button>
-                <button className="ghost-btn danger-btn icon-only" type="button" onClick={() => deleteLead(lead.id)} title="מחיקה" aria-label={`מחיקת פנייה של ${lead.customerName}`}>
-                  <Trash2 size={17} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
     </div>
