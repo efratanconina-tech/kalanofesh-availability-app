@@ -176,6 +176,20 @@ button {
   font-weight: 900;
 }
 
+.metric-button {
+  width: 100%;
+  border: 1px solid rgba(205, 168, 91, 0.2);
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.metric-button:hover {
+  transform: translateY(-2px);
+  border-color: rgba(205, 168, 91, 0.38);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
+}
+
 .metric.compact .metric-value {
   margin-top: 6px;
   font-size: 1.28rem;

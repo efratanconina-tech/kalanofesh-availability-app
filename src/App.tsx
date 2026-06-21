@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.21';
+const APP_VERSION = '2026.06.21.22';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -2260,10 +2260,10 @@ function Dashboard({
       </section>
 
       <section className="grid dashboard-grid">
-        <Metric label="סה״כ מתחמים" value={totalComplexes} icon={<Home size={16} />} compact />
-        <Metric label="פנויים לשבת הקרובה" value={nextShabbatAvailable} icon={<CalendarDays size={18} />} detail={nextShabbatDetail || undefined} />
-        <Metric label="פניות פתוחות" value={openLeads} icon={<Users size={18} />} />
-        <Metric label="משימות" value={openTasks} icon={<ListChecks size={18} />} />
+        <Metric label="סה״כ מתחמים" value={totalComplexes} icon={<Home size={16} />} compact onClick={() => onGo('catalog')} />
+        <Metric label="פנויים לשבת הקרובה" value={nextShabbatAvailable} icon={<CalendarDays size={18} />} detail={nextShabbatDetail || undefined} onClick={() => onGo('calendar')} />
+        <Metric label="פניות פתוחות" value={openLeads} icon={<Users size={18} />} onClick={() => onGo('leads')} />
+        <Metric label="משימות" value={openTasks} icon={<ListChecks size={18} />} onClick={() => onGo('tasks')} />
       </section>
 
       <section className="grid content-grid">
@@ -2311,15 +2311,43 @@ function Dashboard({
   );
 }
 
-function Metric({ label, value, icon, detail, compact = false }: { label: string; value: number; icon: React.ReactNode; detail?: string; compact?: boolean }) {
-  return (
-    <div className={`card metric ${compact ? 'compact' : ''}`}>
+function Metric({
+  label,
+  value,
+  icon,
+  detail,
+  compact = false,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  detail?: string;
+  compact?: boolean;
+  onClick?: () => void;
+}) {
+  const content = (
+    <>
       <div className="item-head">
         <p className="metric-label">{label}</p>
         {icon}
       </div>
       <p className="metric-value">{value}</p>
       {detail && <span className="muted">{detail}</span>}
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button className={`card metric metric-button ${compact ? 'compact' : ''}`} type="button" onClick={onClick} aria-label={`פתח ${label}`}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={`card metric ${compact ? 'compact' : ''}`}>
+      {content}
     </div>
   );
 }
