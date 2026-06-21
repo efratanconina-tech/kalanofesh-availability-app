@@ -16,6 +16,7 @@ function compactState(state) {
   return {
     today: new Date().toISOString().slice(0, 10),
     shabbatParshas: state?.shabbatParshas || [],
+    specialPeriods: state?.specialPeriods || [],
     complexes: limitItems(state?.complexes)
       .filter(complex => complex.active !== false)
       .map(complex => ({

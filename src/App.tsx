@@ -50,7 +50,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.13';
+const APP_VERSION = '2026.06.21.14';
 
 type ParsedStayImport = {
   id: string;
@@ -156,6 +156,58 @@ const parshaByShabbatDate: Record<string, string> = {
   '2027-01-02': 'פרשת ויחי',
 };
 
+type NamedDateRange = {
+  label: string;
+  startDate: string;
+  endDate: string;
+  aliases: string[];
+};
+
+const specialDateRanges: NamedDateRange[] = [
+  {
+    label: 'שבוע ראשון של בין הזמנים',
+    startDate: '2026-07-23',
+    endDate: '2026-07-30',
+    aliases: ['שבוע ראשון של בין הזמנים', 'שבוע ראשון בין הזמנים', 'בין הזמנים שבוע ראשון'],
+  },
+  {
+    label: 'שבוע שני של בין הזמנים',
+    startDate: '2026-07-30',
+    endDate: '2026-08-06',
+    aliases: ['שבוע שני של בין הזמנים', 'שבוע שני בין הזמנים', 'בין הזמנים שבוע שני'],
+  },
+  {
+    label: 'שבוע שלישי של בין הזמנים',
+    startDate: '2026-08-06',
+    endDate: '2026-08-14',
+    aliases: ['שבוע שלישי של בין הזמנים', 'שבוע שלישי בין הזמנים', 'בין הזמנים שבוע שלישי'],
+  },
+  {
+    label: 'בין הזמנים אב',
+    startDate: '2026-07-23',
+    endDate: '2026-08-14',
+    aliases: ['בין הזמנים', 'בין הזמנים אב', 'חופש אב'],
+  },
+  {
+    label: 'ראש השנה',
+    startDate: '2026-09-11',
+    endDate: '2026-09-14',
+    aliases: ['ראש השנה', 'ר"ה', 'רהש'],
+  },
+  {
+    label: 'סוכות',
+    startDate: '2026-09-25',
+    endDate: '2026-10-04',
+    aliases: ['סוכות', 'חג סוכות', 'חוהמ סוכות', 'חול המועד סוכות'],
+  },
+  {
+    label: 'שמחת תורה',
+    startDate: '2026-10-09',
+    endDate: '2026-10-11',
+    aliases: ['שמחת תורה', 'שמיני עצרת', 'שמיני עצרת שמחת תורה'],
+  },
+];
+
 function byDate<T extends { startDate: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => a.startDate.localeCompare(b.startDate));
 }
@@ -207,6 +259,14 @@ function normalizeParshaText(value: string): string {
     .trim();
 }
 
+function normalizePeriodText(value: string): string {
+  return value
+    .replace(/[״"׳']/g, '')
+    .replace(/[-–—.,:;!?()[\]]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function findParshaRangeFromText(text: string): ({ parsha: string } & ReturnType<typeof getParshaRange>) | null {
   const normalized = normalizeParshaText(text);
   for (const parsha of Object.values(parshaByShabbatDate)) {
@@ -217,6 +277,19 @@ function findParshaRangeFromText(text: string): ({ parsha: string } & ReturnType
     }
   }
   return null;
+}
+
+function findSpecialRangeFromText(text: string): NamedDateRange | null {
+  const normalized = normalizePeriodText(text);
+  if (normalized.includes('בין הזמנים')) {
+    if (/\b(1|א|ראשון|הראשון)\b/.test(normalized)) return specialDateRanges.find(range => range.label === 'שבוע ראשון של בין הזמנים') ?? null;
+    if (/\b(2|ב|שני|השני)\b/.test(normalized)) return specialDateRanges.find(range => range.label === 'שבוע שני של בין הזמנים') ?? null;
+    if (/\b(3|ג|שלישי|השלישי)\b/.test(normalized)) return specialDateRanges.find(range => range.label === 'שבוע שלישי של בין הזמנים') ?? null;
+  }
+
+  return specialDateRanges.find(range =>
+    range.aliases.some(alias => normalized.includes(normalizePeriodText(alias)))
+  ) ?? null;
 }
 
 function formatCalendarHebrewDate(dateStr: string): string {
@@ -745,6 +818,8 @@ function buildAssistantReply(input: string, state: AppState): string {
   const normalized = input.trim();
   const explicitDate = normalized.match(/\d{4}-\d{2}-\d{2}/)?.[0];
   const parshaRange = findParshaRangeFromText(normalized);
+  const specialRange = findSpecialRangeFromText(normalized);
+  const isAvailabilityQuestion = normalized.includes('פנוי') || normalized.includes('פנויות') || normalized.includes('זמינות');
 
   if (explicitDate) {
     const endDate = toYMD(addDays(new Date(`${explicitDate}T12:00:00`), 1));
@@ -756,7 +831,24 @@ function buildAssistantReply(input: string, state: AppState): string {
     ].join('\n');
   }
 
-  if (parshaRange && (normalized.includes('פנוי') || normalized.includes('פנויות') || normalized.includes('זמינות'))) {
+  if (specialRange) {
+    if (!isAvailabilityQuestion) {
+      return `${specialRange.label}: ${formatDateLine(specialRange.startDate, specialRange.endDate)}.`;
+    }
+
+    const available = findAvailableComplexes(state, specialRange.startDate, specialRange.endDate);
+    if (!available.length) {
+      return `${specialRange.label} (${formatDateLine(specialRange.startDate, specialRange.endDate)}): לא מצאתי מתחמים פנויים.`;
+    }
+
+    return [
+      `${specialRange.label} (${formatDateLine(specialRange.startDate, specialRange.endDate)}): מצאתי ${available.length} מתחמים פנויים:`,
+      ...available.slice(0, 12).map(complex => `• ${complex.name} - ${complex.city}, עד ${complex.maxGuests} אורחים`),
+      available.length > 12 ? `ועוד ${available.length - 12} מתחמים.` : '',
+    ].filter(Boolean).join('\n');
+  }
+
+  if (parshaRange && isAvailabilityQuestion) {
     const available = findAvailableComplexes(state, parshaRange.startDate, parshaRange.endDate);
     if (!available.length) {
       return `${parshaRange.parsha} (${formatDateLine(parshaRange.labelDate)}): לא מצאתי מתחמים פנויים.`;
@@ -818,6 +910,7 @@ async function askGptAssistant(message: string, state: AppState): Promise<string
       state: {
         ...state,
         shabbatParshas: Object.entries(parshaByShabbatDate).map(([date, parsha]) => ({ date, parsha })),
+        specialPeriods: specialDateRanges.map(({ label, startDate, endDate, aliases }) => ({ label, startDate, endDate, aliases })),
       },
     }),
   });
