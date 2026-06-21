@@ -30,12 +30,27 @@ const BOUTIQUE_HAMAYAN_GALLERY = [
   '/media/complexes/boutique-hamayan/living-room.png',
   '/media/complexes/boutique-hamayan/bathroom.png',
 ];
+const ICON_GALLERY = [
+  '/media/complexes/icon/cover.jpg',
+  '/media/complexes/icon/photo-01.jpg',
+  '/media/complexes/icon/photo-02.jpg',
+  '/media/complexes/icon/photo-03.jpg',
+  '/media/complexes/icon/photo-04.jpg',
+  '/media/complexes/icon/photo-05.jpg',
+  '/media/complexes/icon/photo-06.jpg',
+  '/media/complexes/icon/photo-07.jpg',
+];
 
 const DEFAULT_COMPLEX_MEDIA: Record<string, Pick<Complex, 'coverImageUrl' | 'videoUrl' | 'galleryUrls'>> = {
   'boutique-hamayan': {
     coverImageUrl: '/media/complexes/boutique-hamayan/cover.jpg',
     videoUrl: '/media/complexes/boutique-hamayan/video-tour.mp4',
     galleryUrls: BOUTIQUE_HAMAYAN_GALLERY.join('\n'),
+  },
+  icon: {
+    coverImageUrl: '/media/complexes/icon/cover.jpg',
+    videoUrl: '/media/complexes/icon/video-tour.mp4',
+    galleryUrls: ICON_GALLERY.join('\n'),
   },
 };
 

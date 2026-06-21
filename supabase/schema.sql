@@ -230,6 +230,23 @@ set
   updated_at = now()
 where slug = 'boutique-hamayan';
 
+update public.complexes
+set
+  cover_image_url = '/media/complexes/icon/cover.jpg',
+  video_url = '/media/complexes/icon/video-tour.mp4',
+  gallery_urls = array_to_string(ARRAY[
+    '/media/complexes/icon/cover.jpg',
+    '/media/complexes/icon/photo-01.jpg',
+    '/media/complexes/icon/photo-02.jpg',
+    '/media/complexes/icon/photo-03.jpg',
+    '/media/complexes/icon/photo-04.jpg',
+    '/media/complexes/icon/photo-05.jpg',
+    '/media/complexes/icon/photo-06.jpg',
+    '/media/complexes/icon/photo-07.jpg'
+  ], E'\n'),
+  updated_at = now()
+where slug = 'icon';
+
 insert into public.availability_blocks (id, complex_id, start_date, end_date, status, note)
 select block_id, complexes.id, start_date, end_date, status, note
 from public.complexes

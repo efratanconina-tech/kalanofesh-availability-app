@@ -28,6 +28,17 @@ const boutiqueHamayanGallery = [
   '/media/complexes/boutique-hamayan/bathroom.png',
 ].join('\n');
 
+const iconGallery = [
+  '/media/complexes/icon/cover.jpg',
+  '/media/complexes/icon/photo-01.jpg',
+  '/media/complexes/icon/photo-02.jpg',
+  '/media/complexes/icon/photo-03.jpg',
+  '/media/complexes/icon/photo-04.jpg',
+  '/media/complexes/icon/photo-05.jpg',
+  '/media/complexes/icon/photo-06.jpg',
+  '/media/complexes/icon/photo-07.jpg',
+].join('\n');
+
 export const seedComplexes: Complex[] = [
   {
     id: 'boutique-hamayan',
@@ -83,6 +94,9 @@ export const seedComplexes: Complex[] = [
     maxGuests: 80,
     ownerName: '',
     ownerPhone: '',
+    coverImageUrl: '/media/complexes/icon/cover.jpg',
+    videoUrl: '/media/complexes/icon/video-tour.mp4',
+    galleryUrls: iconGallery,
     internalNotes: 'עירוני ויוקרתי, מתאים לקבוצות שרוצות אולם גדול.',
     shabbatNotes: 'פלטה ומיחם, לבדוק פרטי שבת נוספים לפי לקוח.',
     active: true,
