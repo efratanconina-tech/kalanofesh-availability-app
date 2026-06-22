@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.22.2';
+const APP_VERSION = '2026.06.22.3';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -2379,7 +2379,7 @@ function QuickLookup({
   const [lookupMode, setLookupMode] = useState<'dates' | 'parsha'>('dates');
   const [form, setForm] = useState({
     startDate: todayYMD(),
-    endDate: '',
+    endDate: todayYMD(),
     parsha: getParshaLabel(getUpcomingShabbatRanges(1)[0]?.labelDate) ?? parshaOptions[0] ?? '',
     guests: '20',
     area: 'לא משנה',
@@ -2500,7 +2500,7 @@ function QuickLookup({
         <div className="form-grid">
           {lookupMode === 'dates' ? (
             <>
-              <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate < value ? '' : form.endDate })} />
+              <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate < value ? value : form.endDate })} />
               <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
             </>
           ) : (
@@ -2589,7 +2589,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   const [closeForm, setCloseForm] = useState({
     complexId: activeComplexes[0]?.id ?? '',
     startDate: todayYMD(),
-    endDate: '',
+    endDate: todayYMD(),
     customerName: '',
     customerPhone: '',
     commissionAmount: '',
@@ -2878,7 +2878,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
               onChange={value => setCloseForm(current => ({
                 ...current,
                 startDate: value,
-                endDate: current.endDate < value ? '' : current.endDate,
+                endDate: current.endDate < value ? value : current.endDate,
               }))}
               error={showCloseFormErrors ? closeFormValidation.startDate : undefined}
             />
@@ -2991,7 +2991,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                           onChange={value => setEditingArrivalDraft(current => current ? ({
                             ...current,
                             startDate: value,
-                            endDate: current.endDate < value ? '' : current.endDate,
+                            endDate: current.endDate < value ? value : current.endDate,
                           }) : current)}
                         />
                         <DateField
@@ -3655,7 +3655,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     customerName: '',
     customerPhone: '',
     startDate: todayYMD(),
-    endDate: '',
+    endDate: todayYMD(),
     parsha: '',
     guests: '20',
     areaPreference: 'לא משנה',
@@ -3690,7 +3690,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       customerName: '',
       customerPhone: '',
       startDate: todayYMD(),
-      endDate: '',
+      endDate: todayYMD(),
       parsha: '',
       guests: '20',
       areaPreference: 'לא משנה',
@@ -3825,7 +3825,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
           <SelectField label="לפי" value={dateMode} options={['dates', 'parsha']} labels={{ dates: 'תאריך', parsha: 'פרשה' }} onChange={value => setDateMode(value as 'dates' | 'parsha')} />
           {dateMode === 'dates' ? (
             <>
-              <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate < value ? '' : form.endDate })} />
+              <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate < value ? value : form.endDate })} />
               <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
             </>
           ) : (
