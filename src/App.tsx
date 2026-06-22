@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.22.3';
+const APP_VERSION = '2026.06.22.4';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -142,7 +142,7 @@ const invoiceStatusLabels: Record<InvoiceStatus, string> = {
 
 const areaOptions = ['צפון', 'מרכז', 'ירושלים והסביבה', 'דרום'];
 const areaPreferenceOptions = ['לא משנה', ...areaOptions];
-const vacationTypeOptions = ['לא משנה', 'יום גיבוש', 'שבת חתן', 'שבת משפחתית'];
+const vacationTypeOptions = ['לא משנה', 'יום גיבוש', 'שבת חתן', 'שבת משפחתית', 'חג', 'בין הזמנים'];
 
 const parshaByShabbatDate: Record<string, string> = {
   '2026-06-20': 'פרשת חוקת',
