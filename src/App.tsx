@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.22.7';
+const APP_VERSION = '2026.06.22.8';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -436,6 +436,26 @@ function normalizePhone(value: string): string {
   if (digits.startsWith('972')) return digits;
   if (digits.startsWith('0')) return `972${digits.slice(1)}`;
   return digits;
+}
+
+function isValidPhoneValue(value: string): boolean {
+  const digits = normalizePhone(value);
+  return !value.trim() || (digits.length >= 7 && digits.length <= 15);
+}
+
+function isNonNegativeNumberText(value: string): boolean {
+  if (!value.trim()) return true;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0;
+}
+
+function isPositiveNumberText(value: string): boolean {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0;
+}
+
+function hasMoneyNumber(value: string): boolean {
+  return !value.trim() || parseMoneyAmount(value) > 0;
 }
 
 function parseMoneyAmount(value?: string): number {
@@ -997,6 +1017,7 @@ function validateLeadFields(input: {
   const errors: string[] = [];
 
   if (!input.customerPhone.trim()) errors.push('צריך למלא טלפון לקוח.');
+  if (input.customerPhone.trim() && !isValidPhoneValue(input.customerPhone)) errors.push('מספר הטלפון לא נראה תקין.');
   if (input.mode === 'dates') {
     if (!input.startDate) errors.push('צריך למלא תאריך כניסה.');
     if (!input.endDate) errors.push('צריך למלא תאריך יציאה.');
@@ -1005,9 +1026,39 @@ function validateLeadFields(input: {
     }
   }
   if (input.mode === 'parsha' && !input.parsha?.trim()) errors.push('צריך למלא פרשה.');
-  if (input.guests && Number(input.guests) < 0) errors.push('כמות אורחים לא יכולה להיות שלילית.');
+  if (input.guests && !isNonNegativeNumberText(input.guests)) errors.push('כמות אורחים חייבת להיות מספר תקין.');
 
   return errors.join(' ');
+}
+
+function validateComplexFields(input: {
+  name: string;
+  area: string;
+  city: string;
+  rooms: string;
+  maxGuests: string;
+  ownerPhone: string;
+  priceWeekday: string;
+  priceShabbat: string;
+  priceWeekend: string;
+  priceBeinHazmanim: string;
+  priceHoliday: string;
+}): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  if (!input.name.trim()) errors.name = 'צריך למלא שם מתחם.';
+  if (!input.area.trim()) errors.area = 'צריך לבחור אזור.';
+  if (!input.city.trim()) errors.city = 'כדאי למלא עיר כדי שיהיה קל למצוא ולשווק.';
+  if (!isNonNegativeNumberText(input.rooms)) errors.rooms = 'מספר חדרים חייב להיות תקין.';
+  if (!isPositiveNumberText(input.maxGuests)) errors.maxGuests = 'צריך למלא קיבולת אורחים גדולה מ-0.';
+  if (input.ownerPhone.trim() && !isValidPhoneValue(input.ownerPhone)) errors.ownerPhone = 'טלפון בעל המתחם לא נראה תקין.';
+  if (!hasMoneyNumber(input.priceWeekday)) errors.priceWeekday = 'עלות צריכה לכלול מספר.';
+  if (!hasMoneyNumber(input.priceShabbat)) errors.priceShabbat = 'עלות צריכה לכלול מספר.';
+  if (!hasMoneyNumber(input.priceWeekend)) errors.priceWeekend = 'עלות צריכה לכלול מספר.';
+  if (!hasMoneyNumber(input.priceBeinHazmanim)) errors.priceBeinHazmanim = 'עלות צריכה לכלול מספר.';
+  if (!hasMoneyNumber(input.priceHoliday)) errors.priceHoliday = 'עלות צריכה לכלול מספר.';
+
+  return errors;
 }
 
 function normalizeActionText(value: string): string {
@@ -1821,6 +1872,8 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
   const [expandedComplexIds, setExpandedComplexIds] = useState<string[]>([]);
   const [bulkOwnerMessage, setBulkOwnerMessage] = useState('שלום, רציתי לבדוק זמינות ומחיר לתאריך הקרוב.');
   const [showNewComplex, setShowNewComplex] = useState(false);
+  const [newComplexTouched, setNewComplexTouched] = useState(false);
+  const [newComplexError, setNewComplexError] = useState('');
   const [newComplexForm, setNewComplexForm] = useState({
     name: '',
     area: 'צפון',
@@ -1866,6 +1919,8 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
     [complexes],
   );
   const selectedOwnerTargets = ownerTargets.filter(complex => selectedOwnerIds.includes(complex.id));
+  const newComplexValidation = useMemo(() => validateComplexFields(newComplexForm), [newComplexForm]);
+  const showNewComplexErrors = newComplexTouched || Boolean(newComplexError);
 
   useEffect(() => {
     const availableOwnerIds = new Set(ownerTargets.map(complex => complex.id));
@@ -1893,7 +1948,13 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
   };
 
   const addComplex = async () => {
-    if (!newComplexForm.name.trim()) return;
+    setNewComplexTouched(true);
+    setNewComplexError('');
+    if (Object.keys(newComplexValidation).length > 0) {
+      setNewComplexError('יש שדות שצריך לתקן לפני שמירת המתחם.');
+      return;
+    }
+
     const complex: Complex = {
       id: createSlug(newComplexForm.name, state.complexes.map(item => item.id)),
       name: newComplexForm.name.trim(),
@@ -1916,8 +1977,10 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
       try {
         const cloudComplex = await insertCloudComplex(session, complex);
         persist({ ...state, complexes: [...state.complexes, cloudComplex] });
-      } catch {
+      } catch (error) {
         persist({ ...state, complexes: [...state.complexes, complex] });
+        setNewComplexError(describeCloudSaveError(error));
+        return;
       }
     } else {
       persist({ ...state, complexes: [...state.complexes, complex] });
@@ -1925,6 +1988,8 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
 
     setArea('הכל');
     setShowNewComplex(false);
+    setNewComplexTouched(false);
+    setNewComplexError('');
     setNewComplexForm({
       name: '',
       area: 'צפון',
@@ -2047,7 +2112,11 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
             <p className="muted">כאן מרכזים לכל מתחם תמונה, וידאו, טלפון וטקסט קצר לשליחה.</p>
           </div>
           <div className="actions">
-            <button className="secondary-btn" type="button" onClick={() => setShowNewComplex(true)}>
+            <button className="secondary-btn" type="button" onClick={() => {
+              setNewComplexTouched(false);
+              setNewComplexError('');
+              setShowNewComplex(true);
+            }}>
               <Plus size={16} /> הוסף מתחם
             </button>
             <span className="pill available">{complexes.length} מתחמים</span>
@@ -2108,27 +2177,36 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
           <section className="card modal-panel" role="dialog" aria-modal="true" aria-labelledby="new-complex-title" onClick={event => event.stopPropagation()}>
             <div className="item-head">
               <h2 className="section-title" id="new-complex-title">הוסף מתחם</h2>
-              <button className="ghost-btn icon-only" type="button" aria-label="סגור" onClick={() => setShowNewComplex(false)}>×</button>
+              <button className="ghost-btn icon-only" type="button" aria-label="סגור" onClick={() => {
+                setNewComplexTouched(false);
+                setNewComplexError('');
+                setShowNewComplex(false);
+              }}>×</button>
             </div>
             <div className="form-grid" style={{ marginTop: 12 }}>
-              <Field label="שם מתחם" value={newComplexForm.name} onChange={value => setNewComplexForm(current => ({ ...current, name: value }))} />
-              <SelectField label="אזור" value={newComplexForm.area} options={complexAreaOptions} onChange={value => setNewComplexForm(current => ({ ...current, area: value }))} />
-              <Field label="עיר" value={newComplexForm.city} onChange={value => setNewComplexForm(current => ({ ...current, city: value }))} />
-              <Field label="חדרים" value={newComplexForm.rooms} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, rooms: value }))} />
-              <Field label="מקסימום אורחים" value={newComplexForm.maxGuests} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, maxGuests: value }))} />
+              <Field label="שם מתחם" value={newComplexForm.name} onChange={value => setNewComplexForm(current => ({ ...current, name: value }))} error={showNewComplexErrors ? newComplexValidation.name : undefined} />
+              <SelectField label="אזור" value={newComplexForm.area} options={complexAreaOptions} onChange={value => setNewComplexForm(current => ({ ...current, area: value }))} error={showNewComplexErrors ? newComplexValidation.area : undefined} />
+              <Field label="עיר" value={newComplexForm.city} onChange={value => setNewComplexForm(current => ({ ...current, city: value }))} error={showNewComplexErrors ? newComplexValidation.city : undefined} />
+              <Field label="חדרים" value={newComplexForm.rooms} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, rooms: value }))} error={showNewComplexErrors ? newComplexValidation.rooms : undefined} />
+              <Field label="מקסימום אורחים" value={newComplexForm.maxGuests} type="number" min="0" onChange={value => setNewComplexForm(current => ({ ...current, maxGuests: value }))} error={showNewComplexErrors ? newComplexValidation.maxGuests : undefined} />
               <Field label="שם בעל מתחם" value={newComplexForm.ownerName} onChange={value => setNewComplexForm(current => ({ ...current, ownerName: value }))} />
-              <Field label="טלפון בעל מתחם" value={newComplexForm.ownerPhone} onChange={value => setNewComplexForm(current => ({ ...current, ownerPhone: value }))} />
-              <Field label="עלות ליום חול" value={newComplexForm.priceWeekday} onChange={value => setNewComplexForm(current => ({ ...current, priceWeekday: value }))} placeholder="לדוגמה: 2,500-3,500" />
-              <Field label="עלות לשבת" value={newComplexForm.priceShabbat} onChange={value => setNewComplexForm(current => ({ ...current, priceShabbat: value }))} placeholder="לדוגמה: 12,000-15,000" />
-              <Field label="עלות לסופ״ש" value={newComplexForm.priceWeekend} onChange={value => setNewComplexForm(current => ({ ...current, priceWeekend: value }))} placeholder="חמישי-מוצ״ש / שישי-מוצ״ש" />
-              <Field label="עלות לבין הזמנים" value={newComplexForm.priceBeinHazmanim} onChange={value => setNewComplexForm(current => ({ ...current, priceBeinHazmanim: value }))} />
-              <Field label="עלות לחגים" value={newComplexForm.priceHoliday} onChange={value => setNewComplexForm(current => ({ ...current, priceHoliday: value }))} />
+              <Field label="טלפון בעל מתחם" value={newComplexForm.ownerPhone} onChange={value => setNewComplexForm(current => ({ ...current, ownerPhone: value }))} error={showNewComplexErrors ? newComplexValidation.ownerPhone : undefined} />
+              <Field label="עלות ליום חול" value={newComplexForm.priceWeekday} onChange={value => setNewComplexForm(current => ({ ...current, priceWeekday: value }))} placeholder="לדוגמה: 2,500-3,500" error={showNewComplexErrors ? newComplexValidation.priceWeekday : undefined} />
+              <Field label="עלות לשבת" value={newComplexForm.priceShabbat} onChange={value => setNewComplexForm(current => ({ ...current, priceShabbat: value }))} placeholder="לדוגמה: 12,000-15,000" error={showNewComplexErrors ? newComplexValidation.priceShabbat : undefined} />
+              <Field label="עלות לסופ״ש" value={newComplexForm.priceWeekend} onChange={value => setNewComplexForm(current => ({ ...current, priceWeekend: value }))} placeholder="חמישי-מוצ״ש / שישי-מוצ״ש" error={showNewComplexErrors ? newComplexValidation.priceWeekend : undefined} />
+              <Field label="עלות לבין הזמנים" value={newComplexForm.priceBeinHazmanim} onChange={value => setNewComplexForm(current => ({ ...current, priceBeinHazmanim: value }))} error={showNewComplexErrors ? newComplexValidation.priceBeinHazmanim : undefined} />
+              <Field label="עלות לחגים" value={newComplexForm.priceHoliday} onChange={value => setNewComplexForm(current => ({ ...current, priceHoliday: value }))} error={showNewComplexErrors ? newComplexValidation.priceHoliday : undefined} />
               <Field label="הערות מחיר" value={newComplexForm.priceNotes} onChange={value => setNewComplexForm(current => ({ ...current, priceNotes: value }))} />
+              {newComplexError && <p className="form-error full">{newComplexError}</p>}
               <div className="actions full">
                 <button className="primary-btn" type="button" onClick={addComplex}>
                   <Plus size={16} /> שמור מתחם
                 </button>
-                <button className="ghost-btn" type="button" onClick={() => setShowNewComplex(false)}>ביטול</button>
+                <button className="ghost-btn" type="button" onClick={() => {
+                  setNewComplexTouched(false);
+                  setNewComplexError('');
+                  setShowNewComplex(false);
+                }}>ביטול</button>
               </div>
             </div>
           </section>
@@ -2723,8 +2801,14 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     if (closeForm.startDate && closeForm.endDate && closeForm.endDate < closeForm.startDate) {
       errors.endDate = 'תאריך היציאה לא יכול להיות לפני תאריך הכניסה.';
     }
+    if (closeForm.customerPhone.trim() && !isValidPhoneValue(closeForm.customerPhone)) {
+      errors.customerPhone = 'מספר הטלפון לא נראה תקין.';
+    }
+    if (!hasMoneyNumber(closeForm.commissionAmount)) {
+      errors.commissionAmount = 'עמלה צריכה לכלול מספר.';
+    }
     return errors;
-  }, [activeComplexes.length, closeForm.complexId, closeForm.endDate, closeForm.startDate]);
+  }, [activeComplexes.length, closeForm.commissionAmount, closeForm.complexId, closeForm.customerPhone, closeForm.endDate, closeForm.startDate]);
   const showCloseFormErrors = closeFormTouched || Boolean(closeFormError);
   const grid = getMonthGrid(year, month);
 
@@ -2914,6 +2998,14 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       setEditingArrivalError('תאריך היציאה לא יכול להיות לפני תאריך הכניסה.');
       return;
     }
+    if (editingArrivalDraft.customerPhone?.trim() && !isValidPhoneValue(editingArrivalDraft.customerPhone)) {
+      setEditingArrivalError('מספר הטלפון לא נראה תקין.');
+      return;
+    }
+    if (editingArrivalDraft.commissionAmount?.trim() && !hasMoneyNumber(editingArrivalDraft.commissionAmount)) {
+      setEditingArrivalError('עמלה צריכה לכלול מספר.');
+      return;
+    }
 
     const patch: Partial<AvailabilityBlock> = {
       complexId: editingArrivalDraft.complexId,
@@ -2976,8 +3068,8 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
               error={showCloseFormErrors ? closeFormValidation.endDate : undefined}
             />
             <Field label="שם לקוח" value={closeForm.customerName} onChange={value => setCloseForm(current => ({ ...current, customerName: value }))} />
-            <Field label="טלפון" value={closeForm.customerPhone} onChange={value => setCloseForm(current => ({ ...current, customerPhone: value }))} />
-            <Field label="עמלה שלקחנו" value={closeForm.commissionAmount} onChange={value => setCloseForm(current => ({ ...current, commissionAmount: value }))} placeholder="לדוגמה: 1,500" />
+            <Field label="טלפון" value={closeForm.customerPhone} onChange={value => setCloseForm(current => ({ ...current, customerPhone: value }))} error={showCloseFormErrors ? closeFormValidation.customerPhone : undefined} />
+            <Field label="עמלה שלקחנו" value={closeForm.commissionAmount} onChange={value => setCloseForm(current => ({ ...current, commissionAmount: value }))} placeholder="לדוגמה: 1,500" error={showCloseFormErrors ? closeFormValidation.commissionAmount : undefined} />
             <label className="owner-select">
               <input
                 type="checkbox"
@@ -4065,17 +4157,27 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
 
 function TasksView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
   const [title, setTitle] = useState('');
+  const [taskError, setTaskError] = useState('');
   const [showDoneTasks, setShowDoneTasks] = useState(false);
   const openTasks = state.tasks.filter(task => task.status === 'open');
   const doneTasks = state.tasks.filter(task => task.status === 'done');
 
   const addTask = async () => {
-    if (!title.trim()) return;
+    setTaskError('');
+    if (!title.trim()) {
+      setTaskError('צריך לכתוב כותרת למשימה.');
+      return;
+    }
     const taskData = { title: title.trim(), dueDate: todayYMD() };
 
     if (session) {
-      const task = await insertCloudTask(session, taskData);
-      persist({ ...state, tasks: [task, ...state.tasks] });
+      try {
+        const task = await insertCloudTask(session, taskData);
+        persist({ ...state, tasks: [task, ...state.tasks] });
+      } catch (error) {
+        persist(createTask(state, taskData));
+        setTaskError(describeCloudSaveError(error));
+      }
       setTitle('');
       return;
     }
@@ -4094,9 +4196,10 @@ function TasksView({ state, persist, session }: { state: AppState; persist: (sta
       <section className="card">
         <h2 className="section-title">משימה חדשה</h2>
         <div className="actions">
-          <input className="input" value={title} onChange={event => setTitle(event.target.value)} placeholder="לדוגמה: לבדוק מחיר לשבת הקרובה" />
+          <input className={`input ${taskError && !title.trim() ? 'input-error' : ''}`} value={title} onChange={event => setTitle(event.target.value)} placeholder="לדוגמה: לבדוק מחיר לשבת הקרובה" />
           <button className="primary-btn" type="button" onClick={addTask}>הוסף</button>
         </div>
+        {taskError && <p className="form-error" style={{ marginTop: 12 }}>{taskError}</p>}
       </section>
 
       <section className="card">
