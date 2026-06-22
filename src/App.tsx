@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.21.23';
+const APP_VERSION = '2026.06.22.1';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -1344,6 +1344,7 @@ function LoginButton({ onLogin }: { onLogin: (session: CloudSession) => void }) 
     } catch (event) {
       console.error(event);
       setError(event instanceof Error ? event.message : 'לא הצלחתי לפתוח עם טביעת אצבע. נסי להתחבר בסיסמה.');
+      setOpen(true);
     } finally {
       setLoading(false);
     }
@@ -1381,27 +1382,37 @@ function LoginButton({ onLogin }: { onLogin: (session: CloudSession) => void }) 
   };
 
   if (!open) {
-    return (
-      <div className="login-actions">
-        {biometricReady && (
-          <button className="primary-btn icon-only" type="button" onClick={biometricLogin} title="כניסה בטביעת אצבע" aria-label="כניסה בטביעת אצבע">
-            <Fingerprint size={20} />
-          </button>
-        )}
-        <button className="secondary-btn" type="button" onClick={() => setOpen(true)}>
-          כניסה
+    if (biometricReady) {
+      return (
+        <button className="primary-btn" type="button" disabled={loading} onClick={biometricLogin}>
+          <Fingerprint size={18} /> {loading ? 'פותח...' : 'כניסה בטביעת אצבע'}
         </button>
+      );
+    }
+
+    return (
+      <button className="secondary-btn" type="button" onClick={() => setOpen(true)}>
+        כניסה
+      </button>
+    );
+  }
+
+  if (biometricReady) {
+    return (
+      <div className="card login-popover">
+        <button className="primary-btn biometric-btn" type="button" disabled={loading} onClick={biometricLogin}>
+          <Fingerprint size={19} /> {loading ? 'פותח...' : 'כניסה בטביעת אצבע'}
+        </button>
+        {error && <p className="error-text">{error}</p>}
+        <div className="actions">
+          <button className="ghost-btn" type="button" onClick={() => setOpen(false)}>סגור</button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="card login-popover">
-      {biometricReady && (
-        <button className="primary-btn biometric-btn" type="button" disabled={loading} onClick={biometricLogin}>
-          <Fingerprint size={19} /> כניסה בטביעת אצבע
-        </button>
-      )}
       <label className="field">
         <span className="label">אימייל</span>
         <input className="input" value={email} onChange={event => setEmail(event.target.value)} />
