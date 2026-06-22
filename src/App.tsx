@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.22.1';
+const APP_VERSION = '2026.06.22.2';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -142,6 +142,7 @@ const invoiceStatusLabels: Record<InvoiceStatus, string> = {
 
 const areaOptions = ['צפון', 'מרכז', 'ירושלים והסביבה', 'דרום'];
 const areaPreferenceOptions = ['לא משנה', ...areaOptions];
+const vacationTypeOptions = ['לא משנה', 'יום גיבוש', 'שבת חתן', 'שבת משפחתית'];
 
 const parshaByShabbatDate: Record<string, string> = {
   '2026-06-20': 'פרשת חוקת',
@@ -2382,7 +2383,7 @@ function QuickLookup({
     parsha: getParshaLabel(getUpcomingShabbatRanges(1)[0]?.labelDate) ?? parshaOptions[0] ?? '',
     guests: '20',
     area: 'לא משנה',
-    vacationType: 'שבת חתן',
+    vacationType: 'לא משנה',
     customerName: '',
     customerPhone: '',
     notes: '',
@@ -2513,7 +2514,7 @@ function QuickLookup({
           )}
           <Field label="אורחים" value={form.guests} type="number" min="1" onChange={value => setForm({ ...form, guests: value })} />
           <SelectField label="אזור" value={form.area} options={areaPreferenceOptions} onChange={value => setForm({ ...form, area: value })} />
-          <SelectField label="סוג נופש" value={form.vacationType} options={['שבת חתן', 'משפחה', 'זוגות', 'קבוצה', 'חג']} onChange={value => setForm({ ...form, vacationType: value })} />
+          <SelectField label="סוג נופש" value={form.vacationType} options={vacationTypeOptions} onChange={value => setForm({ ...form, vacationType: value })} />
           <Field label="שם לקוח" value={form.customerName} onChange={value => setForm({ ...form, customerName: value })} />
           <Field label="טלפון" value={form.customerPhone} onChange={value => setForm({ ...form, customerPhone: value })} />
           <Field className="full" label="הערות" value={form.notes} onChange={value => setForm({ ...form, notes: value })} />
@@ -3658,7 +3659,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     parsha: '',
     guests: '20',
     areaPreference: 'לא משנה',
-    vacationType: 'שבת חתן',
+    vacationType: 'לא משנה',
     budget: '',
     notes: '',
     status: 'new' as LeadStatus,
@@ -3693,7 +3694,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       parsha: '',
       guests: '20',
       areaPreference: 'לא משנה',
-      vacationType: 'שבת חתן',
+      vacationType: 'לא משנה',
       budget: '',
       notes: '',
       status: 'new',
@@ -3831,6 +3832,8 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
             <Field label="פרשה" value={form.parsha} onChange={value => setForm({ ...form, parsha: value })} placeholder="לדוגמה: פרשת נח" />
           )}
           <Field label="אורחים" value={form.guests} type="number" min="1" onChange={value => setForm({ ...form, guests: value })} />
+          <SelectField label="אזור" value={form.areaPreference} options={areaPreferenceOptions} onChange={value => setForm({ ...form, areaPreference: value })} />
+          <SelectField label="סוג נופש" value={form.vacationType} options={vacationTypeOptions} onChange={value => setForm({ ...form, vacationType: value })} />
           <Field label="תקציב" value={form.budget} onChange={value => setForm({ ...form, budget: value })} />
           <SelectField
             label="סטטוס"

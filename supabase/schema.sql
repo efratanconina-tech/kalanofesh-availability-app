@@ -55,7 +55,7 @@ create table if not exists public.leads (
   parsha text,
   guests integer not null default 0,
   area_preference text not null default 'לא משנה',
-  vacation_type text not null default 'שבת חתן',
+  vacation_type text not null default 'לא משנה',
   budget text,
   notes text,
   status text not null default 'new' check (status in ('new', 'in_progress', 'waiting', 'closed', 'irrelevant')),
