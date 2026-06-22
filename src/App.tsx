@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.22.10';
+const APP_VERSION = '2026.06.22.11';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -4192,7 +4192,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
 
             return (
               <div className={`list-item lead-card lead-status-${lead.status} ${leadNeedsAttention ? 'lead-attention' : ''}`} key={lead.id}>
-                <div className="item-head">
+                <div className="item-head lead-card-head">
                   <p className="item-title">{lead.customerName}</p>
                   <div className="actions lead-meta-pills">
                     {leadNeedsAttention && <span className="pill attention">דורש תשומת לב</span>}
@@ -4202,10 +4202,10 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
                     <span className={`pill lead-status-pill lead-status-${lead.status}`}>{leadStatusLabels[lead.status]}</span>
                   </div>
                 </div>
-                <span className="muted">נפתחה: {lead.createdAt ? `${formatGregorianDate(lead.createdAt.slice(0, 10))} · ${getLeadAgeLabel(lead)}` : 'לא ידוע'}</span>
-                <span className="muted">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
-                <span className="muted">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}{lead.budget ? ` · תקציב: ${lead.budget}` : ''}</span>
-                {lead.notes && <span className="muted">{lead.notes}</span>}
+                <span className="muted lead-line">נפתחה: {lead.createdAt ? `${formatGregorianDate(lead.createdAt.slice(0, 10))} · ${getLeadAgeLabel(lead)}` : 'לא ידוע'}</span>
+                <span className="muted lead-line">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
+                <span className="muted lead-line">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}{lead.budget ? ` · תקציב: ${lead.budget}` : ''}</span>
+                {lead.notes && <span className="muted lead-line">{lead.notes}</span>}
                 <div className="actions lead-actions">
                   <a className="secondary-btn icon-only" href={`tel:${lead.customerPhone}`} title="שיחה" aria-label={`שיחה אל ${lead.customerName}`}>
                     <Phone size={17} />

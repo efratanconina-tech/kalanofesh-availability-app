@@ -1111,9 +1111,10 @@ button {
 }
 
 .lead-actions {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-start;
+  max-width: 100%;
 }
 
 .lead-actions .icon-only {
@@ -1121,6 +1122,27 @@ button {
   min-width: 34px;
   min-height: 34px;
   border-radius: 10px;
+  flex: 0 0 34px;
+}
+
+.lead-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.lead-card-head {
+  align-items: flex-start;
+}
+
+.lead-card .item-title,
+.lead-line {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lead-meta-pills {
+  justify-content: flex-start;
+  max-width: 100%;
 }
 
 .lead-filter-row {
@@ -2212,5 +2234,38 @@ body {
   .login-popover {
     inset-inline: 12px;
     width: auto;
+  }
+
+  .lead-card {
+    padding: 10px;
+  }
+
+  .lead-card-head {
+    display: grid;
+    gap: 8px;
+  }
+
+  .lead-meta-pills {
+    width: 100%;
+  }
+
+  .lead-actions {
+    display: grid;
+    grid-template-columns: repeat(6, 34px);
+    justify-content: start;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .lead-actions .primary-btn,
+  .lead-actions .secondary-btn,
+  .lead-actions .ghost-btn,
+  .lead-actions .icon-only {
+    width: 34px;
+    min-width: 34px;
+    max-width: 34px;
+    min-height: 34px;
+    padding: 0;
+    flex: 0 0 34px;
   }
 }
