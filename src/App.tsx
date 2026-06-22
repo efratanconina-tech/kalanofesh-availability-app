@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.22.5';
+const APP_VERSION = '2026.06.22.6';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -3954,14 +3954,14 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
             const leadEmail = getLeadEmail(lead);
 
             return (
-              <div className="list-item" key={lead.id}>
+              <div className={`list-item lead-card lead-status-${lead.status}`} key={lead.id}>
                 <div className="item-head">
                   <p className="item-title">{lead.customerName}</p>
                   <div className="actions lead-meta-pills">
                     <span className={`pill budget ${lead.budget ? '' : 'missing'}`}>
                       {lead.budget ? `תקציב: ${lead.budget}` : 'ללא תקציב'}
                     </span>
-                    <span className="pill offered">{leadStatusLabels[lead.status]}</span>
+                    <span className={`pill lead-status-pill lead-status-${lead.status}`}>{leadStatusLabels[lead.status]}</span>
                   </div>
                 </div>
                 <span className="muted">נפתחה: {lead.createdAt ? formatGregorianDate(lead.createdAt.slice(0, 10)) : 'לא ידוע'}</span>

@@ -1910,6 +1910,28 @@ body {
   border-inline-start: 4px solid rgba(200, 155, 63, 0.48);
 }
 
+.lead-card.lead-status-new {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffffff 72%);
+  border-color: rgba(234, 88, 12, 0.22);
+  border-inline-start-color: #ea580c;
+}
+
+.lead-card.lead-status-in_progress {
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 72%);
+  border-color: rgba(37, 99, 235, 0.22);
+  border-inline-start-color: #2563eb;
+}
+
+.pill.lead-status-pill.lead-status-new {
+  background: #fed7aa;
+  color: #9a3412;
+}
+
+.pill.lead-status-pill.lead-status-in_progress {
+  background: #bfdbfe;
+  color: #1d4ed8;
+}
+
 .list-item:hover,
 .availability-item:hover,
 .catalog-card:hover {
