@@ -2229,15 +2229,25 @@ body {
   }
 
   .lookup-fab {
-    inset-inline-start: 50%;
+    left: 50%;
+    right: auto;
+    inset-inline-start: auto;
+    inset-inline-end: auto;
     transform: translateX(-50%);
   }
 
   .assistant-fab {
-    inset-inline-end: 10px;
+    left: 10px;
+    right: auto;
+    inset-inline-start: auto;
+    inset-inline-end: auto;
     width: 48px;
     min-width: 48px;
     padding: 0;
+  }
+
+  .assistant-fab span {
+    display: none;
   }
 
   .login-popover {
