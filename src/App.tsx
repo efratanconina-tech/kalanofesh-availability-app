@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.22.9';
+const APP_VERSION = '2026.06.22.10';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -108,6 +108,15 @@ type StayEvent = {
 };
 
 type LeadFilter = 'all' | 'new' | 'in_progress' | 'attention';
+
+type DashboardInsight = {
+  title: string;
+  value: string;
+  detail: string;
+  tone: 'gold' | 'blue' | 'green' | 'rose';
+  icon: React.ReactNode;
+  target: Tab;
+};
 
 type ArrivalEditDraft = Pick<
   AvailabilityBlock,
@@ -1317,6 +1326,49 @@ function App() {
   const openLeads = state.leads.filter(lead => lead.status !== 'closed' && lead.status !== 'irrelevant');
   const attentionLeads = openLeads.filter(needsLeadAttention);
   const openTasks = state.tasks.filter(task => task.status === 'open');
+  const today = todayYMD();
+  const stayEvents = useMemo(() => getStayEvents(state), [state]);
+  const todayReminders = stayEvents.filter(event => event.date === today || event.reminderDate === today);
+  const unpaidCommissionBlocks = state.availabilityBlocks.filter(block =>
+    block.status !== 'available' &&
+    !block.commissionPaid &&
+    parseMoneyAmount(block.commissionAmount) > 0
+  );
+  const moneyToCollect = unpaidCommissionBlocks.reduce((sum, block) => sum + parseMoneyAmount(block.commissionAmount), 0);
+  const dashboardInsights: DashboardInsight[] = [
+    {
+      title: 'פניות לטיפול',
+      value: String(attentionLeads.length),
+      detail: attentionLeads.length ? 'פניות שלא כדאי להשאיר פתוחות' : 'אין פניות שמחכות יותר מדי',
+      tone: attentionLeads.length ? 'rose' : 'green',
+      icon: <Users size={18} />,
+      target: 'leads',
+    },
+    {
+      title: 'תזכורות היום',
+      value: String(todayReminders.length),
+      detail: todayReminders.length ? 'כניסות, יציאות או חשבוניות היום' : 'אין תזכורות להיום',
+      tone: todayReminders.length ? 'blue' : 'green',
+      icon: <BellRing size={18} />,
+      target: 'stays',
+    },
+    {
+      title: 'עמלה לגבייה',
+      value: formatMoneyAmount(moneyToCollect),
+      detail: unpaidCommissionBlocks.length ? `${unpaidCommissionBlocks.length} סגירות פתוחות לגבייה` : 'אין עמלה פתוחה לגבייה',
+      tone: moneyToCollect ? 'gold' : 'green',
+      icon: <CalendarCheck size={18} />,
+      target: 'stays',
+    },
+    {
+      title: 'שבת קרובה',
+      value: String(nextShabbatAvailable),
+      detail: nextShabbatParsha ? `${nextShabbatParsha} · מתחמים פנויים` : 'מתחמים פנויים לשבת הקרובה',
+      tone: nextShabbatAvailable ? 'green' : 'rose',
+      icon: <CalendarDays size={18} />,
+      target: 'calendar',
+    },
+  ];
 
   return (
     <div className="app-shell">
@@ -1361,6 +1413,7 @@ function App() {
             openTasks={openTasks.length}
             upcomingAvailableCount={upcomingAvailableShabbats.length}
             availableShabbats={upcomingAvailableShabbats}
+            insights={dashboardInsights}
             onGo={setTab}
             onOpenLookup={() => setLookupOpen(true)}
             syncStatus={syncStatus}
@@ -2358,6 +2411,7 @@ function Dashboard({
   openTasks,
   upcomingAvailableCount,
   availableShabbats,
+  insights,
   onGo,
   onOpenLookup,
   syncStatus,
@@ -2377,6 +2431,7 @@ function Dashboard({
     labelDate: string;
     available: Complex[];
   }[];
+  insights: DashboardInsight[];
   onGo: (tab: Tab) => void;
   onOpenLookup: () => void;
   syncStatus: string;
@@ -2415,6 +2470,33 @@ function Dashboard({
           onClick={() => onGo('leads')}
         />
         <Metric label="משימות" value={openTasks} icon={<ListChecks size={18} />} onClick={() => onGo('tasks')} />
+      </section>
+
+      <section className="card focus-panel">
+        <div className="item-head">
+          <div>
+            <h2 className="section-title">היום על השולחן</h2>
+            <p className="muted">ארבע נקודות שכדאי לבדוק לפני שממשיכים לעבוד.</p>
+          </div>
+          <button className="ghost-btn" type="button" onClick={onOpenLookup}>בדיקה מהירה</button>
+        </div>
+        <div className="insight-grid">
+          {insights.map(insight => (
+            <button
+              className={`insight-card ${insight.tone}`}
+              type="button"
+              key={insight.title}
+              onClick={() => onGo(insight.target)}
+            >
+              <span className="insight-icon">{insight.icon}</span>
+              <span className="insight-copy">
+                <strong>{insight.title}</strong>
+                <em>{insight.value}</em>
+                <small>{insight.detail}</small>
+              </span>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="grid content-grid">

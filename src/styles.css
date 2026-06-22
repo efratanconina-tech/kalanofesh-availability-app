@@ -1161,6 +1161,82 @@ button {
   font-size: 0.78rem;
 }
 
+.focus-panel {
+  overflow: hidden;
+}
+
+.insight-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.insight-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+  min-height: 104px;
+  padding: 12px;
+  border: 1px solid rgba(32, 42, 62, 0.1);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  text-align: start;
+}
+
+.insight-icon {
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.insight-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.insight-copy strong {
+  font-size: 0.88rem;
+}
+
+.insight-copy em {
+  color: var(--ink);
+  font-size: 1.32rem;
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1.1;
+}
+
+.insight-copy small {
+  color: var(--muted-ink);
+  line-height: 1.35;
+}
+
+.insight-card.gold {
+  background: linear-gradient(135deg, #fff7e6, #ffffff);
+  border-color: rgba(200, 155, 63, 0.22);
+}
+
+.insight-card.blue {
+  background: linear-gradient(135deg, #eff6ff, #ffffff);
+  border-color: rgba(37, 99, 235, 0.18);
+}
+
+.insight-card.green {
+  background: linear-gradient(135deg, #ecfdf5, #ffffff);
+  border-color: rgba(22, 163, 74, 0.18);
+}
+
+.insight-card.rose {
+  background: linear-gradient(135deg, #fff1f2, #ffffff);
+  border-color: rgba(190, 18, 60, 0.2);
+}
+
 .assistant-card {
   min-height: min(620px, calc(100vh - 170px));
 }
@@ -2103,6 +2179,14 @@ body {
   .list-item,
   .topbar {
     max-width: 100%;
+  }
+
+  .insight-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .insight-card {
+    min-height: 92px;
   }
 
   .lookup-fab,
