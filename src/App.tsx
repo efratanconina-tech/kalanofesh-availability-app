@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.22.4';
+const APP_VERSION = '2026.06.22.5';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -957,6 +957,30 @@ function describeCloudSaveError(error: unknown): string {
   }
 
   return `נשמר מקומית, אבל לא בענן. הודעת Supabase: ${rawMessage || 'שגיאה לא ידועה'}`;
+}
+
+function validateLeadFields(input: {
+  customerPhone: string;
+  mode: 'dates' | 'parsha';
+  startDate?: string;
+  endDate?: string;
+  parsha?: string;
+  guests?: string;
+}): string {
+  const errors: string[] = [];
+
+  if (!input.customerPhone.trim()) errors.push('צריך למלא טלפון לקוח.');
+  if (input.mode === 'dates') {
+    if (!input.startDate) errors.push('צריך למלא תאריך כניסה.');
+    if (!input.endDate) errors.push('צריך למלא תאריך יציאה.');
+    if (input.startDate && input.endDate && input.endDate < input.startDate) {
+      errors.push('תאריך היציאה לא יכול להיות לפני תאריך הכניסה.');
+    }
+  }
+  if (input.mode === 'parsha' && !input.parsha?.trim()) errors.push('צריך למלא פרשה.');
+  if (input.guests && Number(input.guests) < 0) errors.push('כמות אורחים לא יכולה להיות שלילית.');
+
+  return errors.join(' ');
 }
 
 function normalizeActionText(value: string): string {
@@ -2389,6 +2413,7 @@ function QuickLookup({
     notes: '',
   });
   const [checked, setChecked] = useState(false);
+  const [leadSaveError, setLeadSaveError] = useState('');
 
   const selectedParshaRange = lookupMode === 'parsha' ? getParshaRange(form.parsha) : null;
   const lookupStartDate = lookupMode === 'parsha' ? selectedParshaRange?.startDate ?? '' : form.startDate;
@@ -2423,6 +2448,21 @@ function QuickLookup({
   }, [form.area, form.guests, lookupEndDate, lookupStartDate, state.availabilityBlocks, state.complexes]);
 
   const createLeadFromForm = async () => {
+    setLeadSaveError('');
+    const validationError = validateLeadFields({
+      customerPhone: form.customerPhone,
+      mode: lookupMode,
+      startDate: form.startDate,
+      endDate: form.endDate,
+      parsha: form.parsha,
+      guests: form.guests,
+    });
+
+    if (validationError) {
+      setLeadSaveError(validationError);
+      return;
+    }
+
     const leadData = {
       customerName: form.customerName || 'לקוח ללא שם',
       customerPhone: form.customerPhone,
@@ -2437,8 +2477,16 @@ function QuickLookup({
     };
 
     if (session) {
-      const lead = await insertCloudLead(session, leadData);
-      persist({ ...state, leads: [lead, ...state.leads] });
+      try {
+        const lead = await insertCloudLead(session, leadData);
+        persist({ ...state, leads: [lead, ...state.leads] });
+      } catch (error) {
+        const next = createLead(state, {
+          ...leadData,
+        });
+        persist(next);
+        setLeadSaveError(describeCloudSaveError(error));
+      }
       return;
     }
 
@@ -2525,6 +2573,7 @@ function QuickLookup({
           </button>
           <button className="ghost-btn" type="button" onClick={createLeadFromForm}>שמור פנייה בלי הצעה</button>
         </div>
+        {leadSaveError && <p className="form-error" style={{ marginTop: 12 }}>{leadSaveError}</p>}
       </section>
 
       {checked && (
@@ -3651,6 +3700,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
   const [dateMode, setDateMode] = useState<'dates' | 'parsha'>('dates');
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [leadSearch, setLeadSearch] = useState('');
+  const [leadFormError, setLeadFormError] = useState('');
   const [form, setForm] = useState({
     customerName: '',
     customerPhone: '',
@@ -3685,6 +3735,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
 
   const resetLeadForm = () => {
     setEditingLeadId(null);
+    setLeadFormError('');
     setDateMode('dates');
     setForm({
       customerName: '',
@@ -3702,9 +3753,21 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
   };
 
   const saveLead = async () => {
-    const hasDates = Boolean(form.startDate && form.endDate && form.endDate >= form.startDate);
-    const hasParsha = Boolean(form.parsha.trim());
-    if (!form.customerPhone || (dateMode === 'dates' && !hasDates) || (dateMode === 'parsha' && !hasParsha)) return;
+    setLeadFormError('');
+    const validationError = validateLeadFields({
+      customerPhone: form.customerPhone,
+      mode: dateMode,
+      startDate: form.startDate,
+      endDate: form.endDate,
+      parsha: form.parsha,
+      guests: form.guests,
+    });
+
+    if (validationError) {
+      setLeadFormError(validationError);
+      return;
+    }
+
     const existingLead = editingLeadId ? state.leads.find(lead => lead.id === editingLeadId) : undefined;
     const leadData = {
       customerName: form.customerName || 'לקוח ללא שם',
@@ -3728,9 +3791,14 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       };
 
       if (session) {
-        const cloudLead = await updateCloudLead(session, updatedLead);
-        persist({ ...state, leads: state.leads.map(lead => lead.id === cloudLead.id ? cloudLead : lead) });
-        resetLeadForm();
+        try {
+          const cloudLead = await updateCloudLead(session, updatedLead);
+          persist({ ...state, leads: state.leads.map(lead => lead.id === cloudLead.id ? cloudLead : lead) });
+          resetLeadForm();
+        } catch (error) {
+          persist({ ...state, leads: state.leads.map(lead => lead.id === updatedLead.id ? updatedLead : lead) });
+          setLeadFormError(describeCloudSaveError(error));
+        }
         return;
       }
 
@@ -3740,9 +3808,17 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     }
 
     if (session) {
-      const lead = await insertCloudLead(session, leadData);
-      persist({ ...state, leads: [lead, ...state.leads] });
-      resetLeadForm();
+      try {
+        const lead = await insertCloudLead(session, leadData);
+        persist({ ...state, leads: [lead, ...state.leads] });
+        resetLeadForm();
+      } catch (error) {
+        const next = createLead(state, {
+          ...leadData,
+        });
+        persist(next);
+        setLeadFormError(describeCloudSaveError(error));
+      }
       return;
     }
 
@@ -3757,6 +3833,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     const lead = state.leads.find(item => item.id === leadId);
     if (!lead) return;
 
+    setLeadFormError('');
     setEditingLeadId(lead.id);
     setDateMode(lead.parsha ? 'parsha' : 'dates');
     setForm({
@@ -3844,6 +3921,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
           />
           <Field className="full" label="הערות" value={form.notes} onChange={value => setForm({ ...form, notes: value })} />
         </div>
+        {leadFormError && <p className="form-error" style={{ marginTop: 12 }}>{leadFormError}</p>}
         <div className="actions" style={{ marginTop: 12 }}>
           <button className="primary-btn" type="button" onClick={saveLead}>
             <Plus size={16} /> {editingLeadId ? 'עדכן פנייה' : 'שמור פנייה'}
