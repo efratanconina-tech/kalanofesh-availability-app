@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.22.11';
+const APP_VERSION = '2026.06.22.12';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -4115,45 +4115,46 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     window.alert('פרטי הפנייה הועתקו ללוח.');
   };
 
+  const renderLeadFormFields = () => (
+    <>
+      <div className="form-grid">
+        <Field label="שם" value={form.customerName} onChange={value => setForm({ ...form, customerName: value })} />
+        <Field label="טלפון" value={form.customerPhone} onChange={value => setForm({ ...form, customerPhone: value })} />
+        <SelectField label="לפי" value={dateMode} options={['dates', 'parsha']} labels={{ dates: 'תאריך', parsha: 'פרשה' }} onChange={value => setDateMode(value as 'dates' | 'parsha')} />
+        {dateMode === 'dates' ? (
+          <>
+            <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate < value ? value : form.endDate })} />
+            <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
+          </>
+        ) : (
+          <Field label="פרשה" value={form.parsha} onChange={value => setForm({ ...form, parsha: value })} placeholder="לדוגמה: פרשת נח" />
+        )}
+        <Field label="אורחים" value={form.guests} type="number" min="1" onChange={value => setForm({ ...form, guests: value })} />
+        <SelectField label="אזור" value={form.areaPreference} options={areaPreferenceOptions} onChange={value => setForm({ ...form, areaPreference: value })} />
+        <SelectField label="סוג נופש" value={form.vacationType} options={vacationTypeOptions} onChange={value => setForm({ ...form, vacationType: value })} />
+        <Field label="תקציב" value={form.budget} onChange={value => setForm({ ...form, budget: value })} />
+        <SelectField
+          label="סטטוס"
+          value={form.status}
+          options={Object.keys(leadStatusLabels)}
+          labels={leadStatusLabels}
+          onChange={value => setForm({ ...form, status: value as LeadStatus })}
+        />
+        <Field className="full" label="הערות" value={form.notes} onChange={value => setForm({ ...form, notes: value })} />
+      </div>
+      {leadFormError && <p className="form-error" style={{ marginTop: 12 }}>{leadFormError}</p>}
+    </>
+  );
+
   return (
     <div className="grid">
       <section className="card">
-        <h2 className="section-title">{editingLeadId ? 'עריכת פנייה' : 'פנייה חדשה'}</h2>
-        <div className="form-grid">
-          <Field label="שם" value={form.customerName} onChange={value => setForm({ ...form, customerName: value })} />
-          <Field label="טלפון" value={form.customerPhone} onChange={value => setForm({ ...form, customerPhone: value })} />
-          <SelectField label="לפי" value={dateMode} options={['dates', 'parsha']} labels={{ dates: 'תאריך', parsha: 'פרשה' }} onChange={value => setDateMode(value as 'dates' | 'parsha')} />
-          {dateMode === 'dates' ? (
-            <>
-              <DateField label="כניסה" value={form.startDate} min={todayYMD()} onChange={value => setForm({ ...form, startDate: value, endDate: form.endDate < value ? value : form.endDate })} />
-              <DateField label="יציאה" value={form.endDate} min={form.startDate || todayYMD()} onChange={value => setForm({ ...form, endDate: value })} />
-            </>
-          ) : (
-            <Field label="פרשה" value={form.parsha} onChange={value => setForm({ ...form, parsha: value })} placeholder="לדוגמה: פרשת נח" />
-          )}
-          <Field label="אורחים" value={form.guests} type="number" min="1" onChange={value => setForm({ ...form, guests: value })} />
-          <SelectField label="אזור" value={form.areaPreference} options={areaPreferenceOptions} onChange={value => setForm({ ...form, areaPreference: value })} />
-          <SelectField label="סוג נופש" value={form.vacationType} options={vacationTypeOptions} onChange={value => setForm({ ...form, vacationType: value })} />
-          <Field label="תקציב" value={form.budget} onChange={value => setForm({ ...form, budget: value })} />
-          <SelectField
-            label="סטטוס"
-            value={form.status}
-            options={Object.keys(leadStatusLabels)}
-            labels={leadStatusLabels}
-            onChange={value => setForm({ ...form, status: value as LeadStatus })}
-          />
-          <Field className="full" label="הערות" value={form.notes} onChange={value => setForm({ ...form, notes: value })} />
-        </div>
-        {leadFormError && <p className="form-error" style={{ marginTop: 12 }}>{leadFormError}</p>}
+        <h2 className="section-title">פנייה חדשה</h2>
+        {renderLeadFormFields()}
         <div className="actions" style={{ marginTop: 12 }}>
           <button className="primary-btn" type="button" onClick={saveLead}>
-            <Plus size={16} /> {editingLeadId ? 'עדכן פנייה' : 'שמור פנייה'}
+            <Plus size={16} /> שמור פנייה
           </button>
-          {editingLeadId && (
-            <button className="secondary-btn" type="button" onClick={resetLeadForm}>
-              ביטול עריכה
-            </button>
-          )}
         </div>
       </section>
 
@@ -4233,6 +4234,39 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
           })}
         </div>
       </section>
+
+      {editingLeadId && (
+        <div className="modal-backdrop" role="presentation" onClick={resetLeadForm}>
+          <section
+            className="card modal-panel lead-edit-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-lead-title"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="item-head">
+              <div>
+                <h2 className="section-title" id="edit-lead-title">עריכת פנייה</h2>
+                <p className="muted">עדכני את הפרטים ושמרי. סגירה תחזיר אותך לרשימת הלקוחות בלי לקפוץ בדף.</p>
+              </div>
+              <button className="ghost-btn icon-only" type="button" onClick={resetLeadForm} aria-label="סגירת עריכת פנייה">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="lead-edit-form">
+              {renderLeadFormFields()}
+            </div>
+            <div className="actions" style={{ marginTop: 12 }}>
+              <button className="primary-btn" type="button" onClick={saveLead}>
+                <Pencil size={16} /> עדכן פנייה
+              </button>
+              <button className="secondary-btn" type="button" onClick={resetLeadForm}>
+                ביטול
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
