@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.22.6';
+const APP_VERSION = '2026.06.22.7';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -107,6 +107,8 @@ type StayEvent = {
   note?: string;
 };
 
+type LeadFilter = 'all' | 'new' | 'in_progress' | 'attention';
+
 type ArrivalEditDraft = Pick<
   AvailabilityBlock,
   'complexId' | 'startDate' | 'endDate' | 'customerName' | 'customerPhone' | 'commissionAmount' | 'commissionPaid' | 'invoiceStatus' | 'note'
@@ -138,6 +140,13 @@ const invoiceStatusLabels: Record<InvoiceStatus, string> = {
   not_sent: 'לא נשלחה חשבונית',
   sent: 'נשלחה חשבונית',
   end_of_stay: 'תישלח בסוף השהות',
+};
+
+const leadFilterLabels: Record<LeadFilter, string> = {
+  all: 'הכל',
+  new: 'חדש',
+  in_progress: 'בטיפול',
+  attention: 'דורש תשומת לב',
 };
 
 const areaOptions = ['צפון', 'מרכז', 'ירושלים והסביבה', 'דרום'];
@@ -484,6 +493,24 @@ function getLeadMailHref(lead: Lead, email: string): string {
   const subject = encodeURIComponent(`פנייה: ${lead.customerName}`);
   const body = encodeURIComponent(buildLeadShareText(lead));
   return `mailto:${email}?subject=${subject}&body=${body}`;
+}
+
+function getLeadAgeHours(lead: Lead): number {
+  const createdAt = lead.createdAt ? new Date(lead.createdAt).getTime() : 0;
+  if (!createdAt || Number.isNaN(createdAt)) return 0;
+  return Math.max(0, (Date.now() - createdAt) / (1000 * 60 * 60));
+}
+
+function needsLeadAttention(lead: Lead): boolean {
+  const ageHours = getLeadAgeHours(lead);
+  return (lead.status === 'new' && ageHours >= 24) || (lead.status === 'in_progress' && ageHours >= 48);
+}
+
+function getLeadAgeLabel(lead: Lead): string {
+  const ageHours = getLeadAgeHours(lead);
+  if (ageHours < 1) return 'נפתחה עכשיו';
+  if (ageHours < 24) return `לפני ${Math.floor(ageHours)} שעות`;
+  return `לפני ${Math.floor(ageHours / 24)} ימים`;
 }
 
 function getBiometricEnrollment(): BiometricEnrollment | null {
@@ -1237,6 +1264,7 @@ function App() {
     [state],
   );
   const openLeads = state.leads.filter(lead => lead.status !== 'closed' && lead.status !== 'irrelevant');
+  const attentionLeads = openLeads.filter(needsLeadAttention);
   const openTasks = state.tasks.filter(task => task.status === 'open');
 
   return (
@@ -1278,6 +1306,7 @@ function App() {
             nextShabbatLabel={nextShabbatRange?.labelDate}
             nextShabbatParsha={nextShabbatParsha}
             openLeads={openLeads.length}
+            attentionLeads={attentionLeads.length}
             openTasks={openTasks.length}
             upcomingAvailableCount={upcomingAvailableShabbats.length}
             availableShabbats={upcomingAvailableShabbats}
@@ -2247,6 +2276,7 @@ function Dashboard({
   nextShabbatLabel,
   nextShabbatParsha,
   openLeads,
+  attentionLeads,
   openTasks,
   upcomingAvailableCount,
   availableShabbats,
@@ -2260,6 +2290,7 @@ function Dashboard({
   nextShabbatLabel?: string;
   nextShabbatParsha?: string;
   openLeads: number;
+  attentionLeads: number;
   openTasks: number;
   upcomingAvailableCount: number;
   availableShabbats: {
@@ -2298,7 +2329,13 @@ function Dashboard({
       <section className="grid dashboard-grid">
         <Metric label="סה״כ מתחמים" value={totalComplexes} icon={<Home size={16} />} compact onClick={() => onGo('catalog')} />
         <Metric label="פנויים לשבת הקרובה" value={nextShabbatAvailable} icon={<CalendarDays size={18} />} detail={nextShabbatDetail || undefined} onClick={() => onGo('calendar')} />
-        <Metric label="פניות פתוחות" value={openLeads} icon={<Users size={18} />} onClick={() => onGo('leads')} />
+        <Metric
+          label="פניות פתוחות"
+          value={openLeads}
+          icon={<Users size={18} />}
+          detail={attentionLeads ? `${attentionLeads} דורשות תשומת לב` : 'הכול בשליטה'}
+          onClick={() => onGo('leads')}
+        />
         <Metric label="משימות" value={openTasks} icon={<ListChecks size={18} />} onClick={() => onGo('tasks')} />
       </section>
 
@@ -3700,6 +3737,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
   const [dateMode, setDateMode] = useState<'dates' | 'parsha'>('dates');
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [leadSearch, setLeadSearch] = useState('');
+  const [leadFilter, setLeadFilter] = useState<LeadFilter>('all');
   const [leadFormError, setLeadFormError] = useState('');
   const [form, setForm] = useState({
     customerName: '',
@@ -3714,8 +3752,19 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     notes: '',
     status: 'new' as LeadStatus,
   });
+  const leadFilterCounts = useMemo(() => ({
+    all: state.leads.length,
+    new: state.leads.filter(lead => lead.status === 'new').length,
+    in_progress: state.leads.filter(lead => lead.status === 'in_progress').length,
+    attention: state.leads.filter(needsLeadAttention).length,
+  }), [state.leads]);
   const filteredLeads = useMemo(
     () => state.leads
+      .filter(lead => {
+        if (leadFilter === 'attention') return needsLeadAttention(lead);
+        if (leadFilter === 'new' || leadFilter === 'in_progress') return lead.status === leadFilter;
+        return true;
+      })
       .filter(lead => matchesSearch(leadSearch, [
         lead.customerName,
         lead.customerPhone,
@@ -3730,7 +3779,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
         leadStatusLabels[lead.status],
       ]))
       .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
-    [leadSearch, state.leads],
+    [leadFilter, leadSearch, state.leads],
   );
 
   const resetLeadForm = () => {
@@ -3942,6 +3991,19 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
         <div className="form-grid" style={{ marginTop: 12 }}>
           <Field className="full" label="חיפוש לקוח" value={leadSearch} onChange={setLeadSearch} placeholder="שם, טלפון, פרשה, תאריך, סטטוס, הערה..." />
         </div>
+        <div className="lead-filter-row" role="group" aria-label="סינון פניות">
+          {(Object.keys(leadFilterLabels) as LeadFilter[]).map(filter => (
+            <button
+              className={leadFilter === filter ? 'active' : ''}
+              type="button"
+              key={filter}
+              onClick={() => setLeadFilter(filter)}
+            >
+              {leadFilterLabels[filter]}
+              <span>{leadFilterCounts[filter]}</span>
+            </button>
+          ))}
+        </div>
         {leadSearch && (
           <div className="search-summary">
             <span>{filteredLeads.length} תוצאות לחיפוש “{leadSearch}”</span>
@@ -3952,19 +4014,21 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
           {filteredLeads.length === 0 && <p className="muted">לא נמצאו פניות מתאימות.</p>}
           {filteredLeads.map(lead => {
             const leadEmail = getLeadEmail(lead);
+            const leadNeedsAttention = needsLeadAttention(lead);
 
             return (
-              <div className={`list-item lead-card lead-status-${lead.status}`} key={lead.id}>
+              <div className={`list-item lead-card lead-status-${lead.status} ${leadNeedsAttention ? 'lead-attention' : ''}`} key={lead.id}>
                 <div className="item-head">
                   <p className="item-title">{lead.customerName}</p>
                   <div className="actions lead-meta-pills">
+                    {leadNeedsAttention && <span className="pill attention">דורש תשומת לב</span>}
                     <span className={`pill budget ${lead.budget ? '' : 'missing'}`}>
                       {lead.budget ? `תקציב: ${lead.budget}` : 'ללא תקציב'}
                     </span>
                     <span className={`pill lead-status-pill lead-status-${lead.status}`}>{leadStatusLabels[lead.status]}</span>
                   </div>
                 </div>
-                <span className="muted">נפתחה: {lead.createdAt ? formatGregorianDate(lead.createdAt.slice(0, 10)) : 'לא ידוע'}</span>
+                <span className="muted">נפתחה: {lead.createdAt ? `${formatGregorianDate(lead.createdAt.slice(0, 10))} · ${getLeadAgeLabel(lead)}` : 'לא ידוע'}</span>
                 <span className="muted">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
                 <span className="muted">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}{lead.budget ? ` · תקציב: ${lead.budget}` : ''}</span>
                 {lead.notes && <span className="muted">{lead.notes}</span>}

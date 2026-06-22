@@ -1123,6 +1123,44 @@ button {
   border-radius: 10px;
 }
 
+.lead-filter-row {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.lead-filter-row button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid rgba(32, 42, 62, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--muted-ink);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.lead-filter-row button.active {
+  border-color: rgba(37, 99, 235, 0.24);
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.lead-filter-row span {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  font-size: 0.78rem;
+}
+
 .assistant-card {
   min-height: min(620px, calc(100vh - 170px));
 }
@@ -1922,6 +1960,11 @@ body {
   border-inline-start-color: #2563eb;
 }
 
+.lead-card.lead-attention {
+  border-color: rgba(190, 18, 60, 0.26);
+  box-shadow: 0 12px 32px rgba(190, 18, 60, 0.08);
+}
+
 .pill.lead-status-pill.lead-status-new {
   background: #fed7aa;
   color: #9a3412;
@@ -1930,6 +1973,11 @@ body {
 .pill.lead-status-pill.lead-status-in_progress {
   background: #bfdbfe;
   color: #1d4ed8;
+}
+
+.pill.attention {
+  background: #ffe4e6;
+  color: #be123c;
 }
 
 .list-item:hover,
