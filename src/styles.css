@@ -2088,6 +2088,41 @@ body {
 @media (max-width: 520px) {
   .topbar {
     align-items: flex-start;
+    position: relative;
+    top: auto;
+    z-index: 1;
+    margin: 0 0 12px;
+    width: 100%;
+  }
+
+  .app-frame {
+    overflow: visible;
+  }
+
+  .card,
+  .list-item,
+  .topbar {
+    max-width: 100%;
+  }
+
+  .lookup-fab,
+  .assistant-fab {
+    bottom: calc(82px + env(safe-area-inset-bottom));
+    min-height: 48px;
+    padding: 0 15px;
+    font-size: 0.92rem;
+  }
+
+  .lookup-fab {
+    inset-inline-start: 50%;
+    transform: translateX(-50%);
+  }
+
+  .assistant-fab {
+    inset-inline-end: 10px;
+    width: 48px;
+    min-width: 48px;
+    padding: 0;
   }
 
   .login-popover {
