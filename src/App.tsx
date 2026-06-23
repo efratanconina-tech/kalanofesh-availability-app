@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.23.10';
+const APP_VERSION = '2026.06.23.11';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -109,15 +109,6 @@ type StayEvent = {
 };
 
 type LeadFilter = 'all' | 'new' | 'in_progress' | 'attention';
-
-type DashboardInsight = {
-  title: string;
-  value: string;
-  detail: string;
-  tone: 'gold' | 'blue' | 'green' | 'rose';
-  icon: React.ReactNode;
-  target: Tab;
-};
 
 type ArrivalEditDraft = Pick<
   AvailabilityBlock,
@@ -1396,7 +1387,6 @@ function App() {
     };
   }, [session]);
 
-  const totalComplexes = state.complexes.filter(complex => complex.active).length;
   const nextShabbatRange = getUpcomingShabbatRanges(1)[0];
   const nextShabbatParsha = getParshaLabel(nextShabbatRange?.labelDate);
   const nextShabbatAvailable = useMemo(
@@ -1417,48 +1407,6 @@ function App() {
   const attentionLeads = openLeads.filter(needsLeadAttention);
   const today = todayYMD();
   const openTasks = state.tasks.filter(task => task.status === 'open' && shouldShowTask(task, today));
-  const stayEvents = useMemo(() => getStayEvents(state), [state]);
-  const todayReminders = stayEvents.filter(event => event.date === today || event.reminderDate === today);
-  const unpaidCommissionBlocks = state.availabilityBlocks.filter(block =>
-    block.status !== 'available' &&
-    !block.commissionPaid &&
-    parseMoneyAmount(block.commissionAmount) > 0
-  );
-  const moneyToCollect = unpaidCommissionBlocks.reduce((sum, block) => sum + parseMoneyAmount(block.commissionAmount), 0);
-  const dashboardInsights: DashboardInsight[] = [
-    {
-      title: 'פניות לטיפול',
-      value: String(attentionLeads.length),
-      detail: attentionLeads.length ? 'פניות שלא כדאי להשאיר פתוחות' : 'אין פניות שמחכות יותר מדי',
-      tone: attentionLeads.length ? 'rose' : 'green',
-      icon: <Users size={18} />,
-      target: 'leads',
-    },
-    {
-      title: 'תזכורות היום',
-      value: String(todayReminders.length),
-      detail: todayReminders.length ? 'כניסות, יציאות או חשבוניות היום' : 'אין תזכורות להיום',
-      tone: todayReminders.length ? 'blue' : 'green',
-      icon: <BellRing size={18} />,
-      target: 'stays',
-    },
-    {
-      title: 'עמלה לגבייה',
-      value: formatMoneyAmount(moneyToCollect),
-      detail: unpaidCommissionBlocks.length ? `${unpaidCommissionBlocks.length} סגירות פתוחות לגבייה` : 'אין עמלה פתוחה לגבייה',
-      tone: moneyToCollect ? 'gold' : 'green',
-      icon: <CalendarCheck size={18} />,
-      target: 'stays',
-    },
-    {
-      title: 'שבת קרובה',
-      value: String(nextShabbatAvailable),
-      detail: nextShabbatParsha ? `${nextShabbatParsha} · מתחמים פנויים` : 'מתחמים פנויים לשבת הקרובה',
-      tone: nextShabbatAvailable ? 'green' : 'rose',
-      icon: <CalendarDays size={18} />,
-      target: 'calendar',
-    },
-  ];
 
   return (
     <div className="app-shell">
@@ -1472,7 +1420,7 @@ function App() {
           <div className="actions">
             {session ? (
               <button
-                className="ghost-btn"
+                className="ghost-btn topbar-logout"
                 type="button"
                 onClick={() => {
                   clearSession();
@@ -1486,7 +1434,7 @@ function App() {
             ) : (
               <LoginButton onLogin={setSession} />
             )}
-            <button className="ghost-btn" type="button" title="הגדרות">
+            <button className="ghost-btn icon-only topbar-settings" type="button" title="הגדרות" aria-label="הגדרות">
               <Settings size={18} />
             </button>
           </div>
@@ -1494,16 +1442,12 @@ function App() {
 
         {tab === 'dashboard' && (
           <Dashboard
-            totalComplexes={totalComplexes}
             nextShabbatAvailable={nextShabbatAvailable}
-            nextShabbatLabel={nextShabbatRange?.labelDate}
             nextShabbatParsha={nextShabbatParsha}
             openLeads={openLeads.length}
             attentionLeads={attentionLeads.length}
             openTasks={openTasks.length}
-            upcomingAvailableCount={upcomingAvailableShabbats.length}
             availableShabbats={upcomingAvailableShabbats}
-            insights={dashboardInsights}
             onGo={setTab}
             onOpenLookup={() => setLookupOpen(true)}
             syncStatus={syncStatus}
@@ -2494,46 +2438,33 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
 }
 
 function Dashboard({
-  totalComplexes,
   nextShabbatAvailable,
-  nextShabbatLabel,
   nextShabbatParsha,
   openLeads,
   attentionLeads,
   openTasks,
-  upcomingAvailableCount,
   availableShabbats,
-  insights,
   onGo,
   onOpenLookup,
   syncStatus,
   connected,
 }: {
-  totalComplexes: number;
   nextShabbatAvailable: number;
-  nextShabbatLabel?: string;
   nextShabbatParsha?: string;
   openLeads: number;
   attentionLeads: number;
   openTasks: number;
-  upcomingAvailableCount: number;
   availableShabbats: {
     startDate: string;
     endDate: string;
     labelDate: string;
     available: Complex[];
   }[];
-  insights: DashboardInsight[];
   onGo: (tab: Tab) => void;
   onOpenLookup: () => void;
   syncStatus: string;
   connected: boolean;
 }) {
-  const nextShabbatDetail = [
-    nextShabbatLabel ? formatDateLine(nextShabbatLabel) : undefined,
-    nextShabbatParsha,
-  ].filter(Boolean).join(' · ');
-
   return (
     <div className="grid">
       <section className="hero-panel">
@@ -2568,47 +2499,7 @@ function Dashboard({
         </div>
       </section>
 
-      <section className="grid dashboard-grid">
-        <Metric label="סה״כ מתחמים" value={totalComplexes} icon={<Home size={16} />} compact onClick={() => onGo('catalog')} />
-        <Metric label="פנויים לשבת הקרובה" value={nextShabbatAvailable} icon={<CalendarDays size={18} />} detail={nextShabbatDetail || undefined} onClick={() => onGo('calendar')} />
-        <Metric
-          label="פניות פתוחות"
-          value={openLeads}
-          icon={<Users size={18} />}
-          detail={attentionLeads ? `${attentionLeads} דורשות תשומת לב` : 'הכול בשליטה'}
-          onClick={() => onGo('leads')}
-        />
-        <Metric label="משימות" value={openTasks} icon={<ListChecks size={18} />} onClick={() => onGo('tasks')} />
-      </section>
-
-      <section className="card focus-panel">
-        <div className="item-head">
-          <div>
-            <h2 className="section-title">היום על השולחן</h2>
-            <p className="muted">ארבע נקודות שכדאי לבדוק לפני שממשיכים לעבוד.</p>
-          </div>
-          <button className="ghost-btn" type="button" onClick={onOpenLookup}>בדיקה מהירה</button>
-        </div>
-        <div className="insight-grid">
-          {insights.map(insight => (
-            <button
-              className={`insight-card ${insight.tone}`}
-              type="button"
-              key={insight.title}
-              onClick={() => onGo(insight.target)}
-            >
-              <span className="insight-icon">{insight.icon}</span>
-              <span className="insight-copy">
-                <strong>{insight.title}</strong>
-                <em>{insight.value}</em>
-                <small>{insight.detail}</small>
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="grid content-grid">
+      <section className="grid content-grid compact-dashboard-content">
         <div className="card">
           <div className="item-head">
             <h2 className="section-title">שבתות פנויות קרובות</h2>
@@ -2616,7 +2507,7 @@ function Dashboard({
           </div>
           <div className="list">
             {availableShabbats.length === 0 && <p className="muted">לא נמצאו שבתות פנויות בקרוב.</p>}
-            {availableShabbats.map(shabbat => {
+            {availableShabbats.slice(0, 3).map(shabbat => {
               const parsha = getParshaLabel(shabbat.labelDate);
 
               return (
@@ -2635,61 +2526,14 @@ function Dashboard({
                 </div>
               );
             })}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="item-head">
-            <h2 className="section-title">פעולות מהירות</h2>
-          </div>
-          <div className="grid">
-            <button className="primary-btn" type="button" onClick={onOpenLookup}>בדיקת זמינות ללקוח</button>
-            <button className="secondary-btn" type="button" onClick={() => onGo('leads')}>הוספת פנייה</button>
-            <button className="ghost-btn" type="button" onClick={() => onGo('tasks')}>פתיחת משימות</button>
+            {availableShabbats.length > 3 && (
+              <button className="ghost-btn full-width" type="button" onClick={() => onGo('calendar')}>
+                עוד {availableShabbats.length - 3} שבתות בלוחות
+              </button>
+            )}
           </div>
         </div>
       </section>
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  icon,
-  detail,
-  compact = false,
-  onClick,
-}: {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-  detail?: string;
-  compact?: boolean;
-  onClick?: () => void;
-}) {
-  const content = (
-    <>
-      <div className="item-head">
-        <p className="metric-label">{label}</p>
-        {icon}
-      </div>
-      <p className="metric-value">{value}</p>
-      {detail && <span className="muted">{detail}</span>}
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button className={`card metric metric-button ${compact ? 'compact' : ''}`} type="button" onClick={onClick} aria-label={`פתח ${label}`}>
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <div className={`card metric ${compact ? 'compact' : ''}`}>
-      {content}
     </div>
   );
 }
@@ -2958,6 +2802,8 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   const [editingArrivalDraft, setEditingArrivalDraft] = useState<ArrivalEditDraft | null>(null);
   const [editingArrivalError, setEditingArrivalError] = useState('');
   const [expandedClosureIds, setExpandedClosureIds] = useState<string[]>([]);
+  const [showAllArrivals, setShowAllArrivals] = useState(false);
+  const [showAllClosures, setShowAllClosures] = useState(false);
   const [notificationStatus, setNotificationStatus] = useState(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
@@ -2967,16 +2813,17 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     () => allEvents.filter(event => event.type === 'arrival' && event.date >= today).slice(0, 40),
     [allEvents, today],
   );
+  const visibleUpcomingArrivals = showAllArrivals ? upcomingArrivals : upcomingArrivals.slice(0, 6);
   const blocksById = useMemo(
     () => new Map(state.availabilityBlocks.map(block => [block.id, block])),
     [state.availabilityBlocks],
   );
   const upcomingArrivalCountsByDate = useMemo(
-    () => upcomingArrivals.reduce<Record<string, number>>((counts, event) => {
+    () => visibleUpcomingArrivals.reduce<Record<string, number>>((counts, event) => {
       counts[event.date] = (counts[event.date] ?? 0) + 1;
       return counts;
     }, {}),
-    [upcomingArrivals],
+    [visibleUpcomingArrivals],
   );
   const closureBlocks = useMemo(
     () => state.availabilityBlocks
@@ -2988,6 +2835,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       .slice(0, 80),
     [state.availabilityBlocks],
   );
+  const visibleClosureBlocks = showAllClosures ? closureBlocks : closureBlocks.slice(0, 8);
   const unpaidCommissionBlocks = closureBlocks.filter(block => !block.commissionPaid && parseMoneyAmount(block.commissionAmount) > 0);
   const moneyToCollect = unpaidCommissionBlocks.reduce((sum, block) => sum + parseMoneyAmount(block.commissionAmount), 0);
   const reminders = allEvents.filter(event => event.date === today || event.reminderDate === today);
@@ -3360,14 +3208,26 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
 
       <section className="grid content-grid">
         <div className="card">
-          <h2 className="section-title">כניסות קרובות</h2>
+          <div className="item-head compact-section-head">
+            <div>
+              <h2 className="section-title">כניסות קרובות</h2>
+              {!showAllArrivals && upcomingArrivals.length > visibleUpcomingArrivals.length && (
+                <p className="muted">מוצגות 6 הקרובות בלבד.</p>
+              )}
+            </div>
+            {upcomingArrivals.length > 6 && (
+              <button className="ghost-btn" type="button" onClick={() => setShowAllArrivals(current => !current)}>
+                {showAllArrivals ? 'צמצם' : `הצג הכל (${upcomingArrivals.length})`}
+              </button>
+            )}
+          </div>
           <div className="list compact-stay-list">
             {upcomingArrivals.length === 0 && <p className="muted">אין כניסות קרובות.</p>}
-            {upcomingArrivals.map((event, index) => {
+            {visibleUpcomingArrivals.map((event, index) => {
               const block = blocksById.get(event.blockId);
               if (!block) return <StayEventItem event={event} key={event.id} />;
               const isEditing = editingArrivalId === block.id;
-              const isNewDateGroup = index === 0 || upcomingArrivals[index - 1]?.date !== event.date;
+              const isNewDateGroup = index === 0 || visibleUpcomingArrivals[index - 1]?.date !== event.date;
 
               return (
                 <div className="arrival-date-group" key={event.id}>
@@ -3518,7 +3378,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
             <h2 className="section-title">רשימת סגירות</h2>
             <p className="muted">כאן אפשר לעדכן עמלה, תשלום וחשבונית לסגירות קיימות.</p>
           </div>
-          <span className="pill check">{closureBlocks.length} סגירות</span>
+          <span className="pill check">{visibleClosureBlocks.length}/{closureBlocks.length} סגירות</span>
         </div>
         <div className="catalog-preview" style={{ marginTop: 12 }}>
           <p className="metric-label">עוד כסף שאמור להיכנס</p>
@@ -3529,7 +3389,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
         </div>
         <div className="list" style={{ marginTop: 12 }}>
           {closureBlocks.length === 0 && <p className="muted">אין סגירות להצגה.</p>}
-          {closureBlocks.map(block => {
+          {visibleClosureBlocks.map(block => {
             const complex = state.complexes.find(item => item.id === block.complexId);
             const isExpanded = expandedClosureIds.includes(block.id);
             const summary = [
@@ -3592,6 +3452,16 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
               </div>
             );
           })}
+          {closureBlocks.length > visibleClosureBlocks.length && (
+            <button className="ghost-btn full-width" type="button" onClick={() => setShowAllClosures(true)}>
+              הצג עוד {closureBlocks.length - visibleClosureBlocks.length} סגירות
+            </button>
+          )}
+          {showAllClosures && closureBlocks.length > 8 && (
+            <button className="ghost-btn full-width" type="button" onClick={() => setShowAllClosures(false)}>
+              צמצם לרשימה קצרה
+            </button>
+          )}
         </div>
       </section>
     </div>
@@ -4088,6 +3958,8 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
 function LeadsView({ state, persist, session }: { state: AppState; persist: (state: AppState) => void; session: CloudSession | null }) {
   const [dateMode, setDateMode] = useState<'dates' | 'parsha'>('dates');
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [showNewLeadForm, setShowNewLeadForm] = useState(false);
+  const [showAllLeads, setShowAllLeads] = useState(false);
   const [leadSearch, setLeadSearch] = useState('');
   const [leadFilter, setLeadFilter] = useState<LeadFilter>('all');
   const [leadFormError, setLeadFormError] = useState('');
@@ -4133,6 +4005,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
     [leadFilter, leadSearch, state.leads],
   );
+  const visibleLeads = showAllLeads || leadSearch ? filteredLeads : filteredLeads.slice(0, 6);
 
   const resetLeadForm = () => {
     setEditingLeadId(null);
@@ -4213,6 +4086,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
         const lead = await insertCloudLead(session, leadData);
         persist({ ...state, leads: [lead, ...state.leads] });
         resetLeadForm();
+        setShowNewLeadForm(false);
       } catch (error) {
         const next = createLead(state, {
           ...leadData,
@@ -4228,6 +4102,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     });
     persist(next);
     resetLeadForm();
+    setShowNewLeadForm(false);
   };
 
   const editLead = (leadId: string) => {
@@ -4235,6 +4110,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     if (!lead) return;
 
     setLeadFormError('');
+    setShowNewLeadForm(false);
     setEditingLeadId(lead.id);
     setDateMode(lead.parsha ? 'parsha' : 'dates');
     setForm({
@@ -4326,20 +4202,44 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
 
   return (
     <div className="grid">
-      <section className="card">
-        <h2 className="section-title">פנייה חדשה</h2>
-        {renderLeadFormFields()}
-        <div className="actions" style={{ marginTop: 12 }}>
-          <button className="primary-btn" type="button" onClick={saveLead}>
-            <Plus size={16} /> שמור פנייה
+      <section className="card compact-form-card">
+        <div className="item-head compact-section-head">
+          <div>
+            <h2 className="section-title">פנייה חדשה</h2>
+            <p className="muted">הטופס סגור כדי שרשימת הלקוחות תהיה מיד מול העיניים.</p>
+          </div>
+          <button
+            className={showNewLeadForm ? 'secondary-btn' : 'primary-btn'}
+            type="button"
+            onClick={() => {
+              if (!showNewLeadForm) resetLeadForm();
+              setShowNewLeadForm(current => !current);
+            }}
+          >
+            {showNewLeadForm ? 'סגור' : 'הוסף פנייה'}
           </button>
         </div>
+        {showNewLeadForm && (
+          <>
+            {renderLeadFormFields()}
+            <div className="actions" style={{ marginTop: 12 }}>
+              <button className="primary-btn" type="button" onClick={saveLead}>
+                <Plus size={16} /> שמור פנייה
+              </button>
+            </div>
+          </>
+        )}
       </section>
 
       <section className="card">
-        <div className="item-head">
-          <h2 className="section-title">פניות</h2>
-          <span className="pill check">{filteredLeads.length}/{state.leads.length}</span>
+        <div className="item-head compact-section-head">
+          <div>
+            <h2 className="section-title">פניות</h2>
+            {!leadSearch && filteredLeads.length > visibleLeads.length && (
+              <p className="muted">מוצגות {visibleLeads.length} הפניות האחרונות. חיפוש יציג את כל התוצאות.</p>
+            )}
+          </div>
+          <span className="pill check">{visibleLeads.length}/{state.leads.length}</span>
         </div>
         <div className="form-grid" style={{ marginTop: 12 }}>
           <Field className="full" label="חיפוש לקוח" value={leadSearch} onChange={setLeadSearch} placeholder="שם, טלפון, פרשה, תאריך, סטטוס, הערה..." />
@@ -4365,7 +4265,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
         )}
         <div className="list">
           {filteredLeads.length === 0 && <p className="muted">לא נמצאו פניות מתאימות.</p>}
-          {filteredLeads.map(lead => {
+          {visibleLeads.map(lead => {
             const leadEmail = getLeadEmail(lead);
             const leadNeedsAttention = needsLeadAttention(lead);
 
@@ -4410,6 +4310,16 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
               </div>
             );
           })}
+          {!leadSearch && filteredLeads.length > visibleLeads.length && (
+            <button className="ghost-btn full-width" type="button" onClick={() => setShowAllLeads(true)}>
+              הצג עוד {filteredLeads.length - visibleLeads.length} פניות
+            </button>
+          )}
+          {!leadSearch && showAllLeads && filteredLeads.length > 6 && (
+            <button className="ghost-btn full-width" type="button" onClick={() => setShowAllLeads(false)}>
+              צמצם לרשימה קצרה
+            </button>
+          )}
         </div>
       </section>
 

@@ -250,6 +250,48 @@ button {
   font-weight: 800;
 }
 
+.compact-dashboard-content {
+  gap: 10px;
+}
+
+.compact-dashboard-content .card,
+.compact-form-card {
+  padding-block: 12px;
+}
+
+.compact-dashboard-content .list,
+.compact-stay-list {
+  gap: 8px;
+}
+
+.compact-section-head {
+  align-items: center;
+  gap: 8px;
+}
+
+.compact-section-head .section-title {
+  margin-bottom: 3px;
+}
+
+.compact-section-head .muted {
+  display: block;
+  max-width: 34ch;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.compact-form-card .form-grid {
+  margin-top: 12px;
+}
+
+.shabbat-availability-item {
+  padding: 10px 12px;
+}
+
+.full-width {
+  width: 100%;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1667,12 +1709,12 @@ button {
   }
 
   .topbar {
-    align-items: flex-start;
+    align-items: center;
   }
 
   .topbar > .actions {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: row;
+    align-items: center;
     flex: 0 0 auto;
   }
 
@@ -1696,13 +1738,22 @@ button {
   }
 
   .hero-actions {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 
   .primary-btn,
   .secondary-btn,
   .ghost-btn {
     width: 100%;
+  }
+
+  .compact-section-head .primary-btn,
+  .compact-section-head .secondary-btn,
+  .compact-section-head .ghost-btn {
+    width: auto;
+    min-width: 86px;
+    padding-inline: 12px;
+    white-space: nowrap;
   }
 
   .lead-actions .primary-btn,
@@ -2378,12 +2429,42 @@ body {
 
 @media (max-width: 520px) {
   .topbar {
-    align-items: flex-start;
+    align-items: center;
     position: relative;
     top: auto;
     z-index: 1;
     margin: 0 0 12px;
     width: 100%;
+  }
+
+  .topbar > div:first-child {
+    min-width: 0;
+  }
+
+  .topbar .subtitle {
+    display: none;
+  }
+
+  .topbar .eyebrow {
+    margin-bottom: 2px;
+    font-size: 0.68rem;
+  }
+
+  .topbar .title {
+    font-size: 1.48rem;
+    line-height: 1;
+  }
+
+  .topbar > .actions .topbar-logout {
+    width: auto;
+    min-width: 60px;
+    padding-inline: 10px;
+    white-space: nowrap;
+  }
+
+  .topbar > .actions .topbar-settings {
+    width: 42px;
+    min-width: 42px;
   }
 
   .app-frame {
@@ -2464,7 +2545,14 @@ body {
   }
 
   .hero-mini-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(104px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .hero-mini-grid button {
+    min-height: 78px;
+    padding: 9px;
   }
 
   .task-item .item-head {
