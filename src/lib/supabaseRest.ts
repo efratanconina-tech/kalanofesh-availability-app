@@ -31,6 +31,14 @@ export function clearSession(): void {
   localStorage.removeItem(SESSION_KEY);
 }
 
+function toCloudSession(data: { access_token: string; refresh_token: string; user?: { email?: string } }, emailFallback: string): CloudSession {
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    email: data.user?.email ?? emailFallback,
+  };
+}
+
 function requireConfig(): { url: string; key: string } {
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     throw new Error('Supabase is not configured');
@@ -39,18 +47,57 @@ function requireConfig(): { url: string; key: string } {
   return { url: SUPABASE_URL, key: SUPABASE_KEY };
 }
 
+export async function refreshSession(session: CloudSession): Promise<CloudSession> {
+  const { url, key } = requireConfig();
+  const response = await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: {
+      apikey: key,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ refresh_token: session.refreshToken }),
+  });
+
+  if (!response.ok) {
+    clearSession();
+    throw new Error('החיבור פג. צריך להתחבר שוב.');
+  }
+
+  const data = await response.json() as {
+    access_token: string;
+    refresh_token: string;
+    user?: { email?: string };
+  };
+
+  const refreshed = toCloudSession(data, session.email);
+  saveSession(refreshed);
+  return refreshed;
+}
+
 async function request<T>(path: string, options: RequestInit = {}, session?: CloudSession): Promise<T> {
   const { url, key } = requireConfig();
-  const response = await fetch(`${url}${path}`, {
+  const storedSession = session ? getStoredSession() : null;
+  let activeSession: CloudSession | undefined = session;
+  if (storedSession && session && storedSession.email === session.email) {
+    activeSession = storedSession;
+  }
+
+  const send = (requestSession?: CloudSession) => fetch(`${url}${path}`, {
     ...options,
     headers: {
       apikey: key,
-      Authorization: `Bearer ${session?.accessToken ?? key}`,
+      Authorization: `Bearer ${requestSession?.accessToken ?? key}`,
       'Content-Type': 'application/json',
       Prefer: 'return=representation',
       ...(options.headers ?? {}),
     },
   });
+
+  let response = await send(activeSession);
+  if ((response.status === 401 || response.status === 403) && activeSession?.refreshToken) {
+    activeSession = await refreshSession(activeSession);
+    response = await send(activeSession);
+  }
 
   if (!response.ok) {
     const message = await response.text();
@@ -82,11 +129,7 @@ export async function signIn(email: string, password: string): Promise<CloudSess
     user: { email?: string };
   };
 
-  const session: CloudSession = {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
-    email: data.user.email ?? email,
-  };
+  const session = toCloudSession(data, email);
   saveSession(session);
   return session;
 }
