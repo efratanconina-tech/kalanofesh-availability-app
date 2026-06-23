@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.22.14';
+const APP_VERSION = '2026.06.23.1';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -2854,7 +2854,21 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   );
   const today = todayYMD();
   const allEvents = useMemo(() => getStayEvents(state), [state.availabilityBlocks, state.complexes]);
-  const upcomingArrivals = allEvents.filter(event => event.type === 'arrival' && event.date >= today).slice(0, 40);
+  const upcomingArrivals = useMemo(
+    () => allEvents.filter(event => event.type === 'arrival' && event.date >= today).slice(0, 40),
+    [allEvents, today],
+  );
+  const blocksById = useMemo(
+    () => new Map(state.availabilityBlocks.map(block => [block.id, block])),
+    [state.availabilityBlocks],
+  );
+  const upcomingArrivalCountsByDate = useMemo(
+    () => upcomingArrivals.reduce<Record<string, number>>((counts, event) => {
+      counts[event.date] = (counts[event.date] ?? 0) + 1;
+      return counts;
+    }, {}),
+    [upcomingArrivals],
+  );
   const closureBlocks = useMemo(
     () => state.availabilityBlocks
       .filter(block =>
@@ -2905,11 +2919,16 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       const typeLabel = reminder.type === 'arrival' ? 'כניסה' : 'יציאה';
       const timing = reminder.date === today ? 'היום' : 'בעוד 3 ימים';
       const invoiceReminder = reminder.type === 'departure' && reminder.date === today && reminder.invoiceStatus === 'end_of_stay';
-      new Notification(`קלנופש: ${typeLabel} ${timing}`, {
-        body: `${reminder.customerName} - ${reminder.complexName}${invoiceReminder ? ' | לשלוח חשבונית' : ''}`,
-        tag: reminder.id,
-      });
-      sent.add(reminder.id);
+      try {
+        new Notification(`קלנופש: ${typeLabel} ${timing}`, {
+          body: `${reminder.customerName} - ${reminder.complexName}${invoiceReminder ? ' | לשלוח חשבונית' : ''}`,
+          tag: reminder.id,
+        });
+        sent.add(reminder.id);
+      } catch {
+        // Some mobile browsers expose Notification but reject construction inside installed web apps.
+        sent.add(reminder.id);
+      }
     });
     localStorage.setItem(key, Array.from(sent).join(','));
   }, [reminders, today]);
@@ -3199,7 +3218,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
           <div className="list compact-stay-list">
             {upcomingArrivals.length === 0 && <p className="muted">אין כניסות קרובות.</p>}
             {upcomingArrivals.map((event, index) => {
-              const block = state.availabilityBlocks.find(item => item.id === event.blockId);
+              const block = blocksById.get(event.blockId);
               if (!block) return <StayEventItem event={event} key={event.id} />;
               const isEditing = editingArrivalId === block.id;
               const isNewDateGroup = index === 0 || upcomingArrivals[index - 1]?.date !== event.date;
@@ -3209,7 +3228,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                   {isNewDateGroup && (
                     <div className="date-group-label">
                       {formatGregorianDate(event.date)}
-                      <span>{upcomingArrivals.filter(item => item.date === event.date).length} כניסות</span>
+                      <span>{upcomingArrivalCountsByDate[event.date] ?? 1} כניסות</span>
                     </div>
                   )}
                   <div className="list-item stay-event arrival compact-arrival">
