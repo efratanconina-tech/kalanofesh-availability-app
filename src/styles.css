@@ -122,6 +122,46 @@ button {
   gap: 8px;
 }
 
+.hero-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.hero-mini-grid button {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fffdf8;
+  text-align: start;
+  cursor: pointer;
+}
+
+.hero-mini-grid button:active {
+  transform: translateY(1px);
+}
+
+.hero-mini-grid span,
+.hero-mini-grid small {
+  color: rgba(255, 253, 248, 0.68);
+  font-size: 0.74rem;
+}
+
+.hero-mini-grid strong {
+  overflow: hidden;
+  color: #fffdf8;
+  font-size: 0.96rem;
+  font-weight: 950;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sync-badge {
   display: inline-flex;
   align-items: center;
@@ -445,6 +485,18 @@ button {
   min-width: 74px;
   padding-inline: 12px;
   white-space: nowrap;
+}
+
+.calendar-toolbar {
+  display: flex;
+  justify-content: center;
+  margin: 10px 0 4px;
+}
+
+.calendar-today-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 0.82rem;
 }
 
 .item-title {
@@ -1242,6 +1294,61 @@ button {
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.08);
   font-size: 0.78rem;
+}
+
+.task-item {
+  border-inline-start-width: 5px;
+}
+
+.task-item .item-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-item .item-title {
+  overflow-wrap: anywhere;
+}
+
+.task-overdue {
+  border-inline-start-color: #be123c;
+}
+
+.task-today {
+  border-inline-start-color: #c89b3f;
+}
+
+.task-soon {
+  border-inline-start-color: #2563eb;
+}
+
+.task-later {
+  border-inline-start-color: rgba(100, 116, 139, 0.35);
+}
+
+.pill.task-due {
+  white-space: nowrap;
+}
+
+.pill.task-due.overdue {
+  background: #ffe4e6;
+  color: #be123c;
+}
+
+.pill.task-due.today {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.pill.task-due.soon {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.pill.task-due.later {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
 }
 
 .focus-panel {
@@ -2354,6 +2461,18 @@ body {
   .calendar-nav .section-title {
     font-size: 1rem;
     line-height: 1.2;
+  }
+
+  .hero-mini-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .task-item .item-head {
+    grid-template-columns: 1fr;
+  }
+
+  .task-item .ghost-btn {
+    width: 100%;
   }
 
   .lead-card {

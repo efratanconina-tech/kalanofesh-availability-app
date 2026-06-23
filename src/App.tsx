@@ -52,8 +52,9 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.23.9';
+const APP_VERSION = '2026.06.23.10';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 type PendingAssistantAction = {
   id: string;
@@ -261,6 +262,20 @@ function dateFromYMD(value: string): Date {
 function isValidYMD(value?: string): value is string {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   return !Number.isNaN(dateFromYMD(value).getTime());
+}
+
+function diffDays(fromDate: string, toDate: string): number {
+  return Math.round((dateFromYMD(toDate).getTime() - dateFromYMD(fromDate).getTime()) / DAY_MS);
+}
+
+function getRelativeDateLabel(dateStr: string, today = todayYMD()): string {
+  if (!isValidYMD(dateStr)) return 'ללא תאריך';
+  const diff = diffDays(today, dateStr);
+  if (diff < 0) return `באיחור ${Math.abs(diff)} ימים`;
+  if (diff === 0) return 'להיום';
+  if (diff === 1) return 'למחר';
+  if (diff <= 7) return `בעוד ${diff} ימים`;
+  return formatGregorianDate(dateStr);
 }
 
 function getParshaLabel(shabbatDate?: string): string | undefined {
@@ -512,6 +527,22 @@ function isInvoiceTask(task: Task): boolean {
 
 function shouldShowTask(task: Task, today = todayYMD()): boolean {
   return !isInvoiceTask(task) || !isValidYMD(task.dueDate) || task.dueDate <= today;
+}
+
+function getTaskDueTone(task: Task, today = todayYMD()): 'overdue' | 'today' | 'soon' | 'later' {
+  if (!isValidYMD(task.dueDate)) return 'later';
+  const diff = diffDays(today, task.dueDate);
+  if (diff < 0) return 'overdue';
+  if (diff === 0) return 'today';
+  if (diff <= 3) return 'soon';
+  return 'later';
+}
+
+function sortTasksByDueDate(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) =>
+    a.dueDate.localeCompare(b.dueDate) ||
+    b.createdAt.localeCompare(a.createdAt)
+  );
 }
 
 async function showAppNotification(title: string, options: NotificationOptions = {}) {
@@ -2513,6 +2544,23 @@ function Dashboard({
           </span>
           <h2>מה צריך לדעת עכשיו?</h2>
           <p>סך המתחמים, זמינות לשבת הקרובה, פניות פתוחות ומשימות במקום אחד.</p>
+          <div className="hero-mini-grid">
+            <button type="button" onClick={() => onGo('calendar')}>
+              <span>שבת קרובה</span>
+              <strong>{nextShabbatParsha ?? 'פרשה לא ידועה'}</strong>
+              <small>{nextShabbatAvailable} מתחמים פנויים</small>
+            </button>
+            <button type="button" onClick={() => onGo('leads')}>
+              <span>לקוחות</span>
+              <strong>{attentionLeads ? `${attentionLeads} לטיפול` : 'אין דחופים'}</strong>
+              <small>{openLeads} פניות פתוחות</small>
+            </button>
+            <button type="button" onClick={() => onGo('tasks')}>
+              <span>משימות</span>
+              <strong>{openTasks}</strong>
+              <small>{openTasks ? 'פתוחות להיום ולעבודה' : 'הכול נקי'}</small>
+            </button>
+          </div>
         </div>
         <div className="hero-actions">
           <button className="primary-btn" type="button" onClick={onOpenLookup}>בדיקת זמינות</button>
@@ -3007,6 +3055,11 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     setYear(next.getFullYear());
     setMonth(next.getMonth());
   };
+  const jumpToCurrentMonth = () => {
+    const current = new Date();
+    setYear(current.getFullYear());
+    setMonth(current.getMonth());
+  };
   const toggleClosureDetails = (blockId: string) => {
     setExpandedClosureIds(current =>
       current.includes(blockId)
@@ -3422,6 +3475,9 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
             <h2 className="section-title">{new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' }).format(new Date(year, month, 1))}</h2>
             <button className="ghost-btn" type="button" onClick={() => moveMonth(1)}>הבא</button>
           </div>
+          <div className="calendar-toolbar">
+            <button className="ghost-btn calendar-today-btn" type="button" onClick={jumpToCurrentMonth}>החודש הנוכחי</button>
+          </div>
           <div className="calendar stay-calendar">
             <div className="calendar-head">
               {HEBREW_WEEKDAYS_SHORT.map(day => <span key={day}>{day}</span>)}
@@ -3820,6 +3876,13 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     setYear(next.getFullYear());
     setMonth(next.getMonth());
   };
+  const jumpToToday = () => {
+    const current = new Date();
+    const dateStr = todayYMD();
+    setYear(current.getFullYear());
+    setMonth(current.getMonth());
+    setSelectedDate(dateStr);
+  };
 
   return (
     <div className="grid">
@@ -3919,6 +3982,9 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
           <button className="ghost-btn" type="button" onClick={() => moveMonth(-1)}>הקודם</button>
           <h2 className="section-title">{new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' }).format(new Date(year, month, 1))}</h2>
           <button className="ghost-btn" type="button" onClick={() => moveMonth(1)}>הבא</button>
+        </div>
+        <div className="calendar-toolbar">
+          <button className="ghost-btn calendar-today-btn" type="button" onClick={jumpToToday}>חזרה להיום</button>
         </div>
         <div className="calendar-legend">
           <span className="calendar-selected-date">{formatGregorianDate(selectedDate)} · {formatHebrewDate(selectedDate)}</span>
@@ -4389,8 +4455,8 @@ function TasksView({ state, persist, session }: { state: AppState; persist: (sta
   const [showDoneTasks, setShowDoneTasks] = useState(false);
   const today = todayYMD();
   const visibleTasks = state.tasks.filter(task => shouldShowTask(task, today));
-  const openTasks = visibleTasks.filter(task => task.status === 'open');
-  const doneTasks = visibleTasks.filter(task => task.status === 'done');
+  const openTasks = sortTasksByDueDate(visibleTasks.filter(task => task.status === 'open'));
+  const doneTasks = sortTasksByDueDate(visibleTasks.filter(task => task.status === 'done')).reverse();
 
   useEffect(() => {
     const cleanedTasks = state.tasks.filter(task => shouldShowTask(task, todayYMD()));
@@ -4446,17 +4512,23 @@ function TasksView({ state, persist, session }: { state: AppState; persist: (sta
         </div>
         <div className="list">
           {openTasks.length === 0 && <p className="muted">אין משימות פתוחות.</p>}
-          {openTasks.map(task => (
-            <div className="list-item" key={task.id}>
+          {openTasks.map(task => {
+            const dueTone = getTaskDueTone(task, today);
+            return (
+            <div className={`list-item task-item task-${dueTone}`} key={task.id}>
               <div className="item-head">
-                <p className="item-title">{task.title}</p>
+                <div>
+                  <p className="item-title">{task.title}</p>
+                  <span className="muted">לתאריך: {formatGregorianDate(task.dueDate)}</span>
+                </div>
+                <span className={`pill task-due ${dueTone}`}>{getRelativeDateLabel(task.dueDate, today)}</span>
                 <button className="ghost-btn" type="button" onClick={() => closeTask(task.id)}>
                   <CheckCircle2 size={16} /> בוצע
                 </button>
               </div>
-              <span className="muted">לתאריך: {formatGregorianDate(task.dueDate)}</span>
             </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
