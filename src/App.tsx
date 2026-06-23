@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.23.5';
+const APP_VERSION = '2026.06.23.6';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -1496,25 +1496,27 @@ function App() {
         <TabButton active={tab === 'tasks'} onClick={() => setTab('tasks')} icon={<ListChecks size={18} />} label="משימות" />
       </nav>
 
-      <button
-        className="lookup-fab"
-        type="button"
-        onClick={() => setLookupOpen(true)}
-        aria-label="פתח בדיקת זמינות"
-      >
-        <Search size={22} />
-        <span>בדיקה</span>
-      </button>
+      <div className="floating-fabs" aria-label="פעולות צפות">
+        <button
+          className="lookup-fab"
+          type="button"
+          onClick={() => setLookupOpen(true)}
+          aria-label="פתח בדיקת זמינות"
+        >
+          <Search size={22} />
+          <span>בדיקה</span>
+        </button>
 
-      <button
-        className="assistant-fab"
-        type="button"
-        onClick={() => setAssistantOpen(true)}
-        aria-label="פתח עוזר אישי"
-      >
-        <MessageCircle size={22} />
-        <span>עוזר אישי</span>
-      </button>
+        <button
+          className="assistant-fab"
+          type="button"
+          onClick={() => setAssistantOpen(true)}
+          aria-label="פתח עוזר אישי"
+        >
+          <MessageCircle size={22} />
+          <span>עוזר אישי</span>
+        </button>
+      </div>
 
       {lookupOpen && (
         <FloatingPanel label="בדיקת זמינות" onClose={() => setLookupOpen(false)}>

@@ -306,13 +306,25 @@ button {
   overscroll-behavior-x: contain;
 }
 
-.assistant-fab,
-.lookup-fab {
+.floating-fabs {
   position: fixed;
+  left: 12px;
+  right: 12px;
   bottom: calc(92px + env(safe-area-inset-bottom));
   z-index: 25;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.assistant-fab,
+.lookup-fab {
+  position: static;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   min-height: 48px;
   border: 0;
@@ -323,16 +335,12 @@ button {
   box-shadow: 0 18px 36px rgba(15, 23, 42, 0.26);
   font-weight: 900;
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .lookup-fab {
-  right: 16px;
   background: #cda85b;
   color: #0f172a;
-}
-
-.assistant-fab {
-  left: 16px;
 }
 
 .floating-overlay {
@@ -2270,36 +2278,32 @@ body {
     min-height: 92px;
   }
 
-  .lookup-fab,
-  .assistant-fab {
+  .floating-fabs {
     bottom: calc(82px + env(safe-area-inset-bottom));
     z-index: 45;
+    left: 12px;
+    right: 12px;
+    gap: 8px;
+  }
+
+  .lookup-fab,
+  .assistant-fab {
     display: inline-flex;
     justify-content: center;
     min-height: 48px;
     padding: 0 15px;
     font-size: 0.92rem;
+    flex: 0 1 calc(50vw - 18px);
+    width: calc(50vw - 18px);
+    min-width: 118px;
+    max-width: 176px;
   }
 
   .lookup-fab {
-    left: auto;
-    right: 12px;
-    inset-inline-start: auto;
-    inset-inline-end: auto;
-    width: calc(50vw - 18px);
-    min-width: 118px;
     transform: none;
-    max-width: 176px;
   }
 
   .assistant-fab {
-    left: 12px;
-    right: auto;
-    inset-inline-start: auto;
-    inset-inline-end: auto;
-    width: calc(50vw - 18px);
-    min-width: 118px;
-    max-width: 176px;
     padding: 0 12px;
   }
 
