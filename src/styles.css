@@ -832,7 +832,20 @@ button {
 }
 
 .compact-arrival .item-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+  gap: 10px;
+}
+
+.compact-arrival .item-head > div:first-child {
+  min-width: 0;
+}
+
+.compact-arrival .item-title,
+.compact-arrival .muted {
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .arrival-meta,
@@ -865,6 +878,17 @@ button {
   color: #64748b;
   font-size: 0.72rem;
   font-weight: 800;
+}
+
+.arrival-note {
+  display: block;
+  width: 100%;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.compact-arrival .compact-icons {
+  justify-content: flex-start;
 }
 
 .arrival-date-group {
@@ -2369,5 +2393,18 @@ body {
     min-height: 34px;
     padding: 0;
     flex: 0 0 34px;
+  }
+
+  .compact-arrival .item-head {
+    grid-template-columns: 1fr;
+  }
+
+  .arrival-meta {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .compact-arrival .commission-chip {
+    max-width: 100%;
   }
 }

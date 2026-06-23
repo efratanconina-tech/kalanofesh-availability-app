@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.23.8';
+const APP_VERSION = '2026.06.23.9';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -3405,8 +3405,8 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                               <Phone size={17} />
                             </a>
                           )}
-                          {block.invoiceStatus === 'end_of_stay' && <span className="tiny-note">חשבונית בסוף השהות</span>}
                         </div>
+                        {block.invoiceStatus === 'end_of_stay' && <span className="tiny-note arrival-note">חשבונית בסוף השהות</span>}
                       </>
                     )}
                   </div>
