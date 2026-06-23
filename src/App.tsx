@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.23.2';
+const APP_VERSION = '2026.06.23.3';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -481,6 +481,57 @@ function formatMoneyAmount(value: number): string {
     currency: 'ILS',
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function buildInvoiceTaskData(state: AppState, block: AvailabilityBlock) {
+  const complex = state.complexes.find(item => item.id === block.complexId);
+  const customerName = block.customerName || 'סגירה ללא שם';
+  const complexName = complex?.name ?? 'מתחם';
+  const amountText = block.commissionAmount?.trim() || 'סכום חסר';
+
+  return {
+    title: `להוציא חשבונית על ${customerName} ע"ס ${amountText} (${complexName})`,
+    dueDate: block.endDate,
+    complexId: block.complexId,
+  };
+}
+
+function hasInvoiceTask(state: AppState, block: AvailabilityBlock): boolean {
+  const customerName = block.customerName || 'סגירה ללא שם';
+  return state.tasks.some(task =>
+    task.dueDate === block.endDate &&
+    task.complexId === block.complexId &&
+    task.title.includes('להוציא חשבונית') &&
+    task.title.includes(customerName)
+  );
+}
+
+async function showAppNotification(title: string, options: NotificationOptions = {}) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+
+  const notificationOptions: NotificationOptions = {
+    icon: '/icon.svg',
+    badge: '/icon.svg',
+    dir: 'rtl',
+    lang: 'he',
+    ...options,
+  };
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(title, notificationOptions);
+      return;
+    }
+  } catch {
+    // Fallback below is enough for browsers that support Notification but not service-worker notifications.
+  }
+
+  try {
+    new Notification(title, notificationOptions);
+  } catch {
+    // Mobile browsers may expose Notification but block construction in some app modes.
+  }
 }
 
 function splitGallery(value?: string): string[] {
@@ -2919,16 +2970,12 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
       const typeLabel = reminder.type === 'arrival' ? 'כניסה' : 'יציאה';
       const timing = reminder.date === today ? 'היום' : 'בעוד 3 ימים';
       const invoiceReminder = reminder.type === 'departure' && reminder.date === today && reminder.invoiceStatus === 'end_of_stay';
-      try {
-        new Notification(`קלנופש: ${typeLabel} ${timing}`, {
-          body: `${reminder.customerName} - ${reminder.complexName}${invoiceReminder ? ' | לשלוח חשבונית' : ''}`,
-          tag: reminder.id,
-        });
-        sent.add(reminder.id);
-      } catch {
-        // Some mobile browsers expose Notification but reject construction inside installed web apps.
-        sent.add(reminder.id);
-      }
+      const amountText = reminder.commissionAmount ? ` | ע"ס ${reminder.commissionAmount}` : '';
+      void showAppNotification(`קלנופש: ${typeLabel} ${timing}`, {
+        body: `${reminder.customerName} - ${reminder.complexName}${invoiceReminder ? ` | לשלוח חשבונית${amountText}` : ''}`,
+        tag: reminder.id,
+      });
+      sent.add(reminder.id);
     });
     localStorage.setItem(key, Array.from(sent).join(','));
   }, [reminders, today]);
@@ -2937,6 +2984,12 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     if (typeof Notification === 'undefined') return;
     const permission = await Notification.requestPermission();
     setNotificationStatus(permission);
+    if (permission === 'granted') {
+      void showAppNotification('קלנופש: התראות הופעלו', {
+        body: 'מעכשיו אשלח תזכורות על כניסות, יציאות וחשבוניות סוף שהות כשהאפליקציה פעילה/מותקנת.',
+        tag: 'kalanofesh-notifications-enabled',
+      });
+    }
   };
 
   const moveMonth = (direction: -1 | 1) => {
@@ -2954,20 +3007,8 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   const addInvoiceTaskIfNeeded = async (baseState: AppState, block: AvailabilityBlock): Promise<AppState> => {
     if (block.invoiceStatus !== 'end_of_stay') return baseState;
 
-    const complex = baseState.complexes.find(item => item.id === block.complexId);
-    const customerName = block.customerName || 'סגירה ללא שם';
-    const complexName = complex?.name ?? 'מתחם';
-    const taskData = {
-      title: `להוציא חשבונית בסוף השהות - ${customerName} (${complexName})`,
-      dueDate: block.endDate,
-      complexId: block.complexId,
-    };
-    const alreadyExists = baseState.tasks.some(task =>
-      task.dueDate === taskData.dueDate &&
-      task.complexId === taskData.complexId &&
-      task.title === taskData.title
-    );
-    if (alreadyExists) return baseState;
+    const taskData = buildInvoiceTaskData(baseState, block);
+    if (hasInvoiceTask(baseState, block)) return baseState;
 
     if (session) {
       try {
@@ -2980,6 +3021,46 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
 
     return createTask(baseState, taskData);
   };
+
+  useEffect(() => {
+    const missingInvoiceTasks = state.availabilityBlocks.filter(block =>
+      block.invoiceStatus === 'end_of_stay' &&
+      isValidYMD(block.endDate) &&
+      !hasInvoiceTask(state, block)
+    );
+    if (!missingInvoiceTasks.length) return;
+
+    let active = true;
+
+    const backfillInvoiceTasks = async () => {
+      let nextState = state;
+
+      for (const block of missingInvoiceTasks) {
+        if (hasInvoiceTask(nextState, block)) continue;
+
+        const taskData = buildInvoiceTaskData(nextState, block);
+        if (session) {
+          try {
+            const task = await insertCloudTask(session, taskData);
+            nextState = { ...nextState, tasks: [task, ...nextState.tasks] };
+            continue;
+          } catch {
+            // Local fallback keeps the reminder visible even if cloud sync is temporarily unavailable.
+          }
+        }
+
+        nextState = createTask(nextState, taskData);
+      }
+
+      if (active && nextState !== state) persist(nextState);
+    };
+
+    void backfillInvoiceTasks();
+
+    return () => {
+      active = false;
+    };
+  }, [session, state, persist]);
 
   const saveCloseBlock = async () => {
     setCloseFormError('');
