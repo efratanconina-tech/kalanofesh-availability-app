@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.23.4';
+const APP_VERSION = '2026.06.23.5';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -3405,7 +3405,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
         </div>
 
         <div className="card">
-          <div className="item-head">
+          <div className="item-head calendar-nav">
             <button className="ghost-btn" type="button" onClick={() => moveMonth(-1)}>הקודם</button>
             <h2 className="section-title">{new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' }).format(new Date(year, month, 1))}</h2>
             <button className="ghost-btn" type="button" onClick={() => moveMonth(1)}>הבא</button>
@@ -3903,7 +3903,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       )}
 
       <section className="card">
-        <div className="item-head">
+        <div className="item-head calendar-nav">
           <button className="ghost-btn" type="button" onClick={() => moveMonth(-1)}>הקודם</button>
           <h2 className="section-title">{new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' }).format(new Date(year, month, 1))}</h2>
           <button className="ghost-btn" type="button" onClick={() => moveMonth(1)}>הבא</button>

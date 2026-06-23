@@ -418,6 +418,27 @@ button {
   align-items: start;
 }
 
+.calendar-nav {
+  display: grid;
+  grid-template-columns: minmax(74px, auto) minmax(0, 1fr) minmax(74px, auto);
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-nav .section-title {
+  margin: 0;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.calendar-nav .ghost-btn {
+  width: auto;
+  min-width: 74px;
+  padding-inline: 12px;
+  white-space: nowrap;
+}
+
 .item-title {
   margin: 0;
   color: #0f172a;
@@ -2289,6 +2310,22 @@ body {
   .login-popover {
     inset-inline: 12px;
     width: auto;
+  }
+
+  .calendar-nav {
+    grid-template-columns: 82px minmax(92px, 1fr) 82px;
+  }
+
+  .calendar-nav .ghost-btn {
+    width: 82px;
+    min-width: 82px;
+    max-width: 82px;
+    padding-inline: 8px;
+  }
+
+  .calendar-nav .section-title {
+    font-size: 1rem;
+    line-height: 1.2;
   }
 
   .lead-card {
