@@ -28,7 +28,7 @@ import {
   Video,
   X,
 } from 'lucide-react';
-import type { AppState, AvailabilityBlock, AvailabilityStatus, Complex, InvoiceStatus, Lead, LeadStatus } from './types';
+import type { AppState, AvailabilityBlock, AvailabilityStatus, Complex, InvoiceStatus, Lead, LeadStatus, Task } from './types';
 import { createAvailabilityBlock, createLead, createTask, hasDateConflict, loadState, saveState, withoutRemovedComplexes } from './lib/store';
 import { HEBREW_WEEKDAYS_SHORT, formatDateLine, formatGregorianDate, formatHebrewDate, getMonthGrid, isPastDate, toYMD, todayYMD } from './lib/dates';
 import {
@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.23.6';
+const APP_VERSION = '2026.06.23.7';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 
 type PendingAssistantAction = {
@@ -504,6 +504,14 @@ function hasInvoiceTask(state: AppState, block: AvailabilityBlock): boolean {
     task.title.includes('להוציא חשבונית') &&
     task.title.includes(customerName)
   );
+}
+
+function isInvoiceTask(task: Task): boolean {
+  return task.title.includes('להוציא חשבונית');
+}
+
+function shouldShowTask(task: Task, today = todayYMD()): boolean {
+  return !isInvoiceTask(task) || !isValidYMD(task.dueDate) || task.dueDate <= today;
 }
 
 async function showAppNotification(title: string, options: NotificationOptions = {}) {
@@ -1376,8 +1384,8 @@ function App() {
   );
   const openLeads = state.leads.filter(lead => lead.status !== 'closed' && lead.status !== 'irrelevant');
   const attentionLeads = openLeads.filter(needsLeadAttention);
-  const openTasks = state.tasks.filter(task => task.status === 'open');
   const today = todayYMD();
+  const openTasks = state.tasks.filter(task => task.status === 'open' && shouldShowTask(task, today));
   const stayEvents = useMemo(() => getStayEvents(state), [state]);
   const todayReminders = stayEvents.filter(event => event.date === today || event.reminderDate === today);
   const unpaidCommissionBlocks = state.availabilityBlocks.filter(block =>
@@ -3008,6 +3016,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   };
   const addInvoiceTaskIfNeeded = async (baseState: AppState, block: AvailabilityBlock): Promise<AppState> => {
     if (block.invoiceStatus !== 'end_of_stay') return baseState;
+    if (!isValidYMD(block.endDate) || block.endDate > todayYMD()) return baseState;
 
     const taskData = buildInvoiceTaskData(baseState, block);
     if (hasInvoiceTask(baseState, block)) return baseState;
@@ -3028,6 +3037,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     const missingInvoiceTasks = state.availabilityBlocks.filter(block =>
       block.invoiceStatus === 'end_of_stay' &&
       isValidYMD(block.endDate) &&
+      block.endDate <= todayYMD() &&
       !hasInvoiceTask(state, block)
     );
     if (!missingInvoiceTasks.length) return;
@@ -4377,8 +4387,17 @@ function TasksView({ state, persist, session }: { state: AppState; persist: (sta
   const [title, setTitle] = useState('');
   const [taskError, setTaskError] = useState('');
   const [showDoneTasks, setShowDoneTasks] = useState(false);
-  const openTasks = state.tasks.filter(task => task.status === 'open');
-  const doneTasks = state.tasks.filter(task => task.status === 'done');
+  const today = todayYMD();
+  const visibleTasks = state.tasks.filter(task => shouldShowTask(task, today));
+  const openTasks = visibleTasks.filter(task => task.status === 'open');
+  const doneTasks = visibleTasks.filter(task => task.status === 'done');
+
+  useEffect(() => {
+    const cleanedTasks = state.tasks.filter(task => shouldShowTask(task, todayYMD()));
+    if (cleanedTasks.length !== state.tasks.length) {
+      persist({ ...state, tasks: cleanedTasks });
+    }
+  }, [state, persist]);
 
   const addTask = async () => {
     setTaskError('');
