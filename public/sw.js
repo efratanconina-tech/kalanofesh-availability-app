@@ -1,4 +1,4 @@
-const KALNOFESH_CACHE = 'kalanofesh-app-v84';
+const KALNOFESH_CACHE = 'kalanofesh-app-v2026-06-24-01';
 const CORE_ASSETS = ['/', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', event => {
@@ -16,6 +16,12 @@ self.addEventListener('activate', event => {
       ))
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', event => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', event => {

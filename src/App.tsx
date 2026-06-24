@@ -52,7 +52,7 @@ import {
 
 type Tab = 'dashboard' | 'catalog' | 'stays' | 'calendar' | 'leads' | 'tasks';
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string };
-const APP_VERSION = '2026.06.23.11';
+const APP_VERSION = '2026.06.24.01';
 const BIOMETRIC_KEY = 'kalanofesh-biometric-v1';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -109,6 +109,22 @@ type StayEvent = {
 };
 
 type LeadFilter = 'all' | 'new' | 'in_progress' | 'attention';
+
+type LeadCloseDraft = {
+  lead: Lead;
+  data: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>;
+  complexId: string;
+  startDate: string;
+  endDate: string;
+  commissionAmount: string;
+  commissionPaid: boolean;
+  error: string;
+};
+
+type LeadComplexShareDraft = {
+  lead: Lead;
+  complexId: string;
+};
 
 type ArrivalEditDraft = Pick<
   AvailabilityBlock,
@@ -395,6 +411,20 @@ function findAvailableComplexes(state: AppState, startDate: string, endDate: str
   );
 }
 
+function findDefinitelyAvailableComplexes(state: AppState, startDate: string, endDate: string): Complex[] {
+  return state.complexes.filter(complex => {
+    if (!complex.active) return false;
+
+    const blocks = state.availabilityBlocks.filter(block =>
+      block.complexId === complex.id &&
+      hasDateConflict(block, startDate, endDate)
+    );
+
+    return blocks.some(block => block.status === 'available') &&
+      !blocks.some(block => block.status !== 'available');
+  });
+}
+
 function getGuestFit(maxGuests: number, requestedGuests: number) {
   if (!requestedGuests || requestedGuests <= 0 || !maxGuests) {
     return { isReasonable: true, label: 'ללא סינון אורחים', score: 0 };
@@ -571,6 +601,24 @@ function splitGallery(value?: string): string[] {
     .filter(Boolean);
 }
 
+function toShareableUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.startsWith('data:')) return '';
+  if (/^https?:\/\//.test(trimmed)) return trimmed;
+
+  try {
+    return new URL(trimmed, window.location.origin).toString();
+  } catch {
+    return '';
+  }
+}
+
+function getComplexShareableMediaUrls(complex: Complex): string[] {
+  return getComplexMediaUrls(complex)
+    .map(toShareableUrl)
+    .filter(Boolean);
+}
+
 function buildLeadShareText(lead: Lead): string {
   return [
     `פנייה: ${lead.customerName}`,
@@ -602,6 +650,27 @@ function getLeadWhatsappHref(lead: Lead): string {
 function getLeadMailHref(lead: Lead, email: string): string {
   const subject = encodeURIComponent(`פנייה: ${lead.customerName}`);
   const body = encodeURIComponent(buildLeadShareText(lead));
+  return `mailto:${email}?subject=${subject}&body=${body}`;
+}
+
+function buildLeadComplexShareText(lead: Lead, complex: Complex): string {
+  return buildComplexOfferText(complex, {
+    startDate: lead.startDate,
+    endDate: lead.endDate,
+    guests: String(lead.guests || ''),
+    notes: lead.notes,
+  });
+}
+
+function getLeadComplexWhatsappHref(lead: Lead, complex: Complex): string {
+  const phone = normalizePhone(lead.customerPhone);
+  const text = encodeURIComponent(buildLeadComplexShareText(lead, complex));
+  return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+}
+
+function getLeadComplexMailHref(lead: Lead, complex: Complex, email: string): string {
+  const subject = encodeURIComponent(`פרטי מתחם: ${complex.name}`);
+  const body = encodeURIComponent(buildLeadComplexShareText(lead, complex));
   return `mailto:${email}?subject=${subject}&body=${body}`;
 }
 
@@ -800,10 +869,11 @@ async function mediaUrlToFile(url: string, complex: Complex, index: number): Pro
     return dataUrlToFile(url, buildMediaFileName(complex, mimeType, index));
   }
 
-  if (!/^https?:\/\//.test(url)) return null;
+  const shareableUrl = toShareableUrl(url);
+  if (!/^https?:\/\//.test(shareableUrl)) return null;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(shareableUrl);
     if (!response.ok) return null;
     const blob = await response.blob();
     if (!blob.type.startsWith('image/') && !blob.type.startsWith('video/')) return null;
@@ -1041,7 +1111,8 @@ function buildComplexShareText(complex: Complex): string {
   const shareableImages = [
     complex.coverImageUrl,
     ...splitGallery(complex.galleryUrls),
-  ].filter((url): url is string => Boolean(url && /^https?:\/\//.test(url)));
+  ].map(url => url ? toShareableUrl(url) : '').filter(Boolean);
+  const videoUrl = complex.videoUrl ? toShareableUrl(complex.videoUrl) : '';
 
   return [
     complex.name,
@@ -1056,7 +1127,7 @@ function buildComplexShareText(complex: Complex): string {
     complex.priceNotes ? `הערות מחיר: ${complex.priceNotes}` : '',
     complex.shabbatNotes ? `פרטי שבת: ${complex.shabbatNotes}` : '',
     shareableImages.length ? `תמונות: ${shareableImages.join(' | ')}` : '',
-    complex.videoUrl ? `וידאו: ${complex.videoUrl}` : '',
+    videoUrl ? `וידאו: ${videoUrl}` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -1242,13 +1313,17 @@ function buildAssistantReply(input: string, state: AppState): string {
   const parshaRange = findParshaRangeFromText(normalized);
   const specialRange = findSpecialRangeFromText(normalized);
   const isAvailabilityQuestion = normalized.includes('פנוי') || normalized.includes('פנויות') || normalized.includes('זמינות');
+  const definiteOnly = /בוודאות|ודאי|ודאיים|מסומנ(?:ים|ות)?\s+פנו(?:י|יים|יות)|פנוי\s+בטוח|פנויות\s+בטוח/.test(normalized);
+  const findMatchingAvailable = definiteOnly ? findDefinitelyAvailableComplexes : findAvailableComplexes;
+  const availabilityTitle = definiteOnly ? 'פנויים בוודאות' : 'פנויים';
+  const emptyAvailabilityTitle = definiteOnly ? 'מתחמים פנויים בוודאות' : 'מתחמים פנויים';
 
   if (explicitDate) {
     const endDate = toYMD(addDays(new Date(`${explicitDate}T12:00:00`), 1));
-    const available = findAvailableComplexes(state, explicitDate, endDate);
-    if (!available.length) return `לתאריך ${formatDateLine(explicitDate)} לא מצאתי מתחמים פנויים.`;
+    const available = findMatchingAvailable(state, explicitDate, endDate);
+    if (!available.length) return `לתאריך ${formatDateLine(explicitDate)} לא מצאתי ${emptyAvailabilityTitle}.`;
     return [
-      `לתאריך ${formatDateLine(explicitDate)} מצאתי ${available.length} מתחמים פנויים:`,
+      `לתאריך ${formatDateLine(explicitDate)} מצאתי ${available.length} מתחמים ${availabilityTitle}:`,
       ...available.map(complex => `• ${complex.name} - ${complex.city}, עד ${complex.maxGuests} אורחים`),
     ].join('\n');
   }
@@ -1258,26 +1333,26 @@ function buildAssistantReply(input: string, state: AppState): string {
       return `${specialRange.label}: ${formatDateLine(specialRange.startDate, specialRange.endDate)}.`;
     }
 
-    const available = findAvailableComplexes(state, specialRange.startDate, specialRange.endDate);
+    const available = findMatchingAvailable(state, specialRange.startDate, specialRange.endDate);
     if (!available.length) {
-      return `${specialRange.label} (${formatDateLine(specialRange.startDate, specialRange.endDate)}): לא מצאתי מתחמים פנויים.`;
+      return `${specialRange.label} (${formatDateLine(specialRange.startDate, specialRange.endDate)}): לא מצאתי ${emptyAvailabilityTitle}.`;
     }
 
     return [
-      `${specialRange.label} (${formatDateLine(specialRange.startDate, specialRange.endDate)}): מצאתי ${available.length} מתחמים פנויים:`,
+      `${specialRange.label} (${formatDateLine(specialRange.startDate, specialRange.endDate)}): מצאתי ${available.length} מתחמים ${availabilityTitle}:`,
       ...available.slice(0, 12).map(complex => `• ${complex.name} - ${complex.city}, עד ${complex.maxGuests} אורחים`),
       available.length > 12 ? `ועוד ${available.length - 12} מתחמים.` : '',
     ].filter(Boolean).join('\n');
   }
 
   if (parshaRange && isAvailabilityQuestion) {
-    const available = findAvailableComplexes(state, parshaRange.startDate, parshaRange.endDate);
+    const available = findMatchingAvailable(state, parshaRange.startDate, parshaRange.endDate);
     if (!available.length) {
-      return `${parshaRange.parsha} (${formatDateLine(parshaRange.labelDate)}): לא מצאתי מתחמים פנויים.`;
+      return `${parshaRange.parsha} (${formatDateLine(parshaRange.labelDate)}): לא מצאתי ${emptyAvailabilityTitle}.`;
     }
 
     return [
-      `${parshaRange.parsha} (${formatDateLine(parshaRange.labelDate)}): מצאתי ${available.length} מתחמים פנויים:`,
+      `${parshaRange.parsha} (${formatDateLine(parshaRange.labelDate)}): מצאתי ${available.length} מתחמים ${availabilityTitle}:`,
       ...available.slice(0, 12).map(complex => `• ${complex.name} - ${complex.city}, עד ${complex.maxGuests} אורחים`),
       available.length > 12 ? `ועוד ${available.length - 12} מתחמים.` : '',
     ].filter(Boolean).join('\n');
@@ -1286,11 +1361,11 @@ function buildAssistantReply(input: string, state: AppState): string {
   if (normalized.includes('שבת הקרובה') || normalized.includes('שבת קרובה')) {
     const range = getUpcomingShabbatRanges(1)[0];
     if (!range) return 'לא מצאתי שבת קרובה לבדיקה.';
-    const available = findAvailableComplexes(state, range.startDate, range.endDate);
-    if (!available.length) return `לשבת הקרובה (${formatDateLine(range.labelDate)}) לא מצאתי מתחמים פנויים.`;
+    const available = findMatchingAvailable(state, range.startDate, range.endDate);
+    if (!available.length) return `לשבת הקרובה (${formatDateLine(range.labelDate)}) לא מצאתי ${emptyAvailabilityTitle}.`;
 
     return [
-      `לשבת הקרובה (${formatDateLine(range.labelDate)}) מצאתי ${available.length} מתחמים פנויים:`,
+      `לשבת הקרובה (${formatDateLine(range.labelDate)}) מצאתי ${available.length} מתחמים ${availabilityTitle}:`,
       ...available.slice(0, 12).map(complex => `• ${complex.name} - ${complex.city}, עד ${complex.maxGuests} אורחים`),
       available.length > 12 ? `ועוד ${available.length - 12} מתחמים.` : '',
     ].filter(Boolean).join('\n');
@@ -1300,24 +1375,24 @@ function buildAssistantReply(input: string, state: AppState): string {
     const ranges = getUpcomingShabbatRanges(3)
       .map(range => ({
         ...range,
-        available: findAvailableComplexes(state, range.startDate, range.endDate),
+        available: findMatchingAvailable(state, range.startDate, range.endDate),
       }))
       .filter(range => range.available.length > 0);
 
-    if (!ranges.length) return 'לא מצאתי שבתות עם מתחמים פנויים בשלושת החודשים הקרובים.';
+    if (!ranges.length) return `לא מצאתי שבתות עם ${emptyAvailabilityTitle} בשלושת החודשים הקרובים.`;
 
     return [
-      'שבתות פנויות בשלושת החודשים הקרובים:',
+      definiteOnly ? 'שבתות פנויות בוודאות בשלושת החודשים הקרובים:' : 'שבתות פנויות בשלושת החודשים הקרובים:',
       ...ranges.slice(0, 12).map(range => {
         const names = range.available.slice(0, 5).map(complex => complex.name).join(', ');
         const extra = range.available.length > 5 ? ` ועוד ${range.available.length - 5}` : '';
-        return `• ${formatDateLine(range.labelDate)}: ${range.available.length} פנויים - ${names}${extra}`;
+        return `• ${formatDateLine(range.labelDate)}: ${range.available.length} ${availabilityTitle} - ${names}${extra}`;
       }),
     ].join('\n');
   }
 
   if (normalized.includes('פנוי') || normalized.includes('פנויות') || normalized.includes('זמינות')) {
-    return 'אפשר לכתוב למשל: "מה פנוי לשבת הקרובה", "רשימת שבתות פנויות לחודשים הקרובים" או "מה פנוי ב-2026-07-10".';
+    return 'אפשר לכתוב למשל: "מה פנוי לשבת הקרובה", "מה פנוי בוודאות לשבת הקרובה", "רשימת שבתות פנויות לחודשים הקרובים" או "מה פנוי ב-2026-07-10".';
   }
 
   return 'כרגע אני יודעת לחשב זמינות מתוך הנתונים. נסי לכתוב: "מה פנוי לשבת הקרובה".';
@@ -1854,6 +1929,9 @@ function AssistantView({
           <button className="secondary-btn" type="button" onClick={() => sendMessage('מה פנוי לשבת הקרובה')}>
             מה פנוי לשבת הקרובה
           </button>
+          <button className="secondary-btn" type="button" onClick={() => sendMessage('מה פנוי בוודאות לשבת הקרובה')}>
+            פנוי בוודאות
+          </button>
           <button className="secondary-btn" type="button" onClick={() => setInput('כניסות לוילות:\n')}>
             הדבקת כניסות
           </button>
@@ -2138,6 +2216,11 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
     const text = encodeURIComponent(bulkOwnerMessage.trim() || 'שלום, רציתי לבדוק זמינות.');
     return `https://wa.me/${phone}?text=${text}`;
   };
+  const getOwnerWhatsappHref = (complex: Complex) => {
+    const phone = normalizePhone(complex.ownerPhone ?? '');
+    const text = encodeURIComponent(`שלום, רציתי לבדוק זמינות ומחיר עבור ${complex.name}.`);
+    return `https://wa.me/${phone}?text=${text}`;
+  };
   const shareComplexMedia = async (complex: Complex) => {
     const mediaUrls = getComplexMediaUrls(complex);
     if (!mediaUrls.length) {
@@ -2417,12 +2500,21 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
                     <Share2 size={16} /> שתף מדיה
                   </button>
                   <a className="primary-btn" href={getWhatsappHref(complex)} target="_blank" rel="noreferrer">
-                    <Share2 size={16} /> שלח ללקוח
+                    <MessageCircle size={16} /> WhatsApp ללקוח
                   </a>
                   <a className="secondary-btn" href={getMailHref(complex)}>
-                    שלח במייל
+                    <Mail size={16} /> מייל ללקוח
                   </a>
-                  {complex.ownerPhone && <a className="secondary-btn" href={`tel:${complex.ownerPhone}`}>שיחה לבעל מתחם</a>}
+                  {complex.ownerPhone && (
+                    <>
+                      <a className="primary-btn" href={getOwnerWhatsappHref(complex)} target="_blank" rel="noreferrer">
+                        <MessageCircle size={16} /> WhatsApp לבעל מתחם
+                      </a>
+                      <a className="secondary-btn" href={`tel:${complex.ownerPhone}`}>
+                        <Phone size={16} /> שיחה לבעל מתחם
+                      </a>
+                    </>
+                  )}
                   <button className="ghost-btn danger-btn" type="button" onClick={() => deleteComplex(complex)}>
                     <Trash2 size={16} /> מחק מתחם
                   </button>
@@ -3249,15 +3341,6 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                             עמלה {block.commissionAmount}{block.commissionPaid ? ' · שולם' : ''}
                           </span>
                         )}
-                        <button
-                          className="ghost-btn icon-only"
-                          type="button"
-                          onClick={() => startEditingArrival(block)}
-                          title="עריכה"
-                          aria-label={`עריכת כניסה של ${block.customerName || 'לקוח'}`}
-                        >
-                          <Pencil size={16} />
-                        </button>
                       </div>
                     </div>
                     {isEditing && editingArrivalDraft ? (
@@ -3313,6 +3396,15 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
                     ) : (
                       <>
                         <div className="actions lead-actions compact-icons">
+                          <button
+                            className="ghost-btn icon-only arrival-edit-btn"
+                            type="button"
+                            onClick={() => startEditingArrival(block)}
+                            title="עריכה"
+                            aria-label={`עריכת כניסה של ${block.customerName || 'לקוח'}`}
+                          >
+                            <Pencil size={16} />
+                          </button>
                           {block.customerPhone && (
                             <a className="secondary-btn icon-only" href={`tel:${block.customerPhone}`} title="שיחה" aria-label={`שיחה אל ${block.customerName || 'לקוח'}`}>
                               <Phone size={17} />
@@ -3560,7 +3652,24 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
   };
   const bulkRanges = useMemo(() => parseBulkDateRanges(bulkDatesText), [bulkDatesText]);
 
-  const saveBlock = async (blockData: {
+  const isCalendarMarker = (block: AvailabilityBlock) => (
+    !block.leadId &&
+    !block.customerName &&
+    !block.customerPhone &&
+    !block.commissionAmount
+  );
+
+  const getOverlappingCalendarMarkerIds = (targetComplexId: string, startDate: string, endDate: string) => (
+    state.availabilityBlocks
+      .filter(block =>
+        isCalendarMarker(block) &&
+        block.complexId === targetComplexId &&
+        hasDateConflict(block, startDate, endDate)
+      )
+      .map(block => block.id)
+  );
+
+  const saveCalendarMarker = async (blockData: {
     complexId: string;
     startDate: string;
     endDate: string;
@@ -3568,23 +3677,86 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
     customerName?: string;
     customerPhone?: string;
     note?: string;
-  }) => {
+  }, message: string) => {
+    const replacedMarkerIds = getOverlappingCalendarMarkerIds(blockData.complexId, blockData.startDate, blockData.endDate);
+
     if (session) {
       const block = await insertCloudAvailability(session, blockData);
-      persist({ ...state, availabilityBlocks: [...state.availabilityBlocks, block] });
+      persist({
+        ...state,
+        availabilityBlocks: [
+          ...state.availabilityBlocks.filter(item => !replacedMarkerIds.includes(item.id)),
+          block,
+        ],
+      });
+
+      for (const markerId of replacedMarkerIds) {
+        try {
+          await deleteCloudAvailability(session, markerId);
+        } catch {
+          // The local calendar is already corrected; a future cloud refresh can retry cleanup if needed.
+        }
+      }
+
+      setCalendarMarkMessage(message);
       return;
     }
 
-    const next = createAvailabilityBlock(state, blockData);
+    const cleanedState = {
+      ...state,
+      availabilityBlocks: state.availabilityBlocks.filter(item => !replacedMarkerIds.includes(item.id)),
+    };
+    const next = createAvailabilityBlock(cleanedState, blockData);
     persist(next);
+    setCalendarMarkMessage(message);
   };
 
-  const isCalendarMarker = (block: AvailabilityBlock) => (
-    !block.leadId &&
-    !block.customerName &&
-    !block.customerPhone &&
-    !block.commissionAmount
-  );
+  const saveCalendarMarkers = async (blockDataList: Array<{
+    complexId: string;
+    startDate: string;
+    endDate: string;
+    status: AvailabilityStatus;
+    note?: string;
+  }>) => {
+    const replacedMarkerIds = Array.from(new Set(blockDataList.flatMap(blockData =>
+      getOverlappingCalendarMarkerIds(blockData.complexId, blockData.startDate, blockData.endDate)
+    )));
+
+    if (session) {
+      const savedBlocks: AvailabilityBlock[] = [];
+      for (const blockData of blockDataList) {
+        savedBlocks.push(await insertCloudAvailability(session, blockData));
+      }
+
+      persist({
+        ...state,
+        availabilityBlocks: [
+          ...state.availabilityBlocks.filter(item => !replacedMarkerIds.includes(item.id)),
+          ...savedBlocks,
+        ],
+      });
+
+      for (const markerId of replacedMarkerIds) {
+        try {
+          await deleteCloudAvailability(session, markerId);
+        } catch {
+          // The local calendar is already corrected; a future cloud refresh can retry cleanup if needed.
+        }
+      }
+
+      return;
+    }
+
+    const cleanedState = {
+      ...state,
+      availabilityBlocks: state.availabilityBlocks.filter(item => !replacedMarkerIds.includes(item.id)),
+    };
+    const nextState = blockDataList.reduce(
+      (currentState, blockData) => createAvailabilityBlock(currentState, blockData),
+      cleanedState
+    );
+    persist(nextState);
+  };
 
   const deleteCalendarMarkers = async (blockIds: string[], message: string) => {
     persist({
@@ -3607,14 +3779,27 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
 
   const markComplexDate = async (targetComplexId: string, nextStatus: AvailabilityStatus) => {
     if (isPastDate(selectedDate)) return;
-
-    await saveBlock({
-      complexId: targetComplexId,
+    const range = expandWeekendRange({
       startDate: selectedDate,
       endDate: selectedDateEnd,
+    });
+
+    await saveCalendarMarker({
+      complexId: targetComplexId,
+      startDate: range.startDate,
+      endDate: range.endDate,
       status: nextStatus,
       note: nextStatus === 'booked' ? 'תפוס אצל בעל הוילה' : 'בעל המתחם אישר שפנוי',
-    });
+    }, `${statusLabels[nextStatus]} נשמר בלוח.`);
+  };
+  const getCalendarOwnerWhatsappHref = (complex: Complex) => {
+    const phone = normalizePhone(complex.ownerPhone ?? '');
+    const text = encodeURIComponent([
+      `שלום, האם ${complex.name} פנוי לכם בתאריך:`,
+      `${formatGregorianDate(selectedDate)} | ${formatHebrewDate(selectedDate)}`,
+      'ואשמח גם למחיר.',
+    ].join('\n'));
+    return `https://wa.me/${phone}?text=${text}`;
   };
 
   const selectDay = (date: Date) => {
@@ -3667,7 +3852,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
       return;
     }
 
-    await saveBlock({
+    await saveCalendarMarker({
       complexId,
       startDate: range.startDate,
       endDate: range.endDate,
@@ -3677,8 +3862,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
         : markAction === 'available'
           ? 'סומן כפנוי'
           : 'אופציונלי',
-    });
-    setCalendarMarkMessage(`${statusLabels[markAction]} נשמר בלוח.`);
+    }, `${statusLabels[markAction]} נשמר בלוח.`);
   };
 
   const handleCalendarDayClick = (date: Date) => {
@@ -3724,19 +3908,7 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
         note: `${notePrefix} | מקור: ${range.sourceLine}`,
     }));
 
-    if (session) {
-      const savedBlocks: AvailabilityBlock[] = [];
-      for (const blockData of blockDataList) {
-        savedBlocks.push(await insertCloudAvailability(session, blockData));
-      }
-      persist({ ...state, availabilityBlocks: [...state.availabilityBlocks, ...savedBlocks] });
-    } else {
-      const nextState = blockDataList.reduce(
-        (currentState, blockData) => createAvailabilityBlock(currentState, blockData),
-        state
-      );
-      persist(nextState);
-    }
+    await saveCalendarMarkers(blockDataList);
 
     setBulkDatesText('');
   };
@@ -3938,14 +4110,16 @@ function CalendarView({ state, persist, session }: { state: AppState; persist: (
                   <button className="primary-btn" type="button" onClick={() => markComplexDate(complex.id, 'booked')}>
                     סמן כתפוס
                   </button>
-                  <button
-                    className="ghost-btn"
-                    type="button"
-                    onClick={() => setComplexId(complex.id)}
-                  >
-                    בחר מתחם
-                  </button>
-                  {complex.ownerPhone && <a className="ghost-btn" href={`tel:${complex.ownerPhone}`}>התקשר לבעל מתחם</a>}
+                  {complex.ownerPhone && (
+                    <>
+                      <a className="primary-btn" href={getCalendarOwnerWhatsappHref(complex)} target="_blank" rel="noreferrer">
+                        <MessageCircle size={16} /> וואצפ לבעל מתחם
+                      </a>
+                      <a className="ghost-btn" href={`tel:${complex.ownerPhone}`}>
+                        <Phone size={16} /> התקשר לבעל מתחם
+                      </a>
+                    </>
+                  )}
                 </div>
               </div>
           ))}
@@ -3960,9 +4134,12 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [showNewLeadForm, setShowNewLeadForm] = useState(false);
   const [showAllLeads, setShowAllLeads] = useState(false);
+  const [showClosedLeads, setShowClosedLeads] = useState(false);
   const [leadSearch, setLeadSearch] = useState('');
   const [leadFilter, setLeadFilter] = useState<LeadFilter>('all');
   const [leadFormError, setLeadFormError] = useState('');
+  const [leadCloseDraft, setLeadCloseDraft] = useState<LeadCloseDraft | null>(null);
+  const [leadComplexShareDraft, setLeadComplexShareDraft] = useState<LeadComplexShareDraft | null>(null);
   const [form, setForm] = useState({
     customerName: '',
     customerPhone: '',
@@ -3976,14 +4153,40 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     notes: '',
     status: 'new' as LeadStatus,
   });
-  const leadFilterCounts = useMemo(() => ({
-    all: state.leads.length,
-    new: state.leads.filter(lead => lead.status === 'new').length,
-    in_progress: state.leads.filter(lead => lead.status === 'in_progress').length,
-    attention: state.leads.filter(needsLeadAttention).length,
-  }), [state.leads]);
-  const filteredLeads = useMemo(
+  const activeComplexes = useMemo(() => state.complexes.filter(complex => complex.active), [state.complexes]);
+  const leadShareComplex = leadComplexShareDraft
+    ? activeComplexes.find(complex => complex.id === leadComplexShareDraft.complexId) ?? activeComplexes[0]
+    : undefined;
+  const leadShareEmail = leadComplexShareDraft ? getLeadEmail(leadComplexShareDraft.lead) : '';
+  const closedBookedLeadIds = useMemo(
+    () => new Set(state.availabilityBlocks
+      .filter(block => block.status === 'booked' && Boolean(block.leadId))
+      .map(block => block.leadId as string)),
+    [state.availabilityBlocks],
+  );
+  const isArchivedLead = (lead: Lead) => (
+    lead.status === 'closed' ||
+    lead.status === 'irrelevant' ||
+    closedBookedLeadIds.has(lead.id)
+  );
+  const activeLeads = useMemo(
+    () => state.leads.filter(lead => !isArchivedLead(lead)),
+    [closedBookedLeadIds, state.leads],
+  );
+  const archivedLeads = useMemo(
     () => state.leads
+      .filter(isArchivedLead)
+      .sort((a, b) => (b.updatedAt ?? b.createdAt ?? '').localeCompare(a.updatedAt ?? a.createdAt ?? '')),
+    [closedBookedLeadIds, state.leads],
+  );
+  const leadFilterCounts = useMemo(() => ({
+    all: activeLeads.length,
+    new: activeLeads.filter(lead => lead.status === 'new').length,
+    in_progress: activeLeads.filter(lead => lead.status === 'in_progress').length,
+    attention: activeLeads.filter(needsLeadAttention).length,
+  }), [activeLeads]);
+  const filteredLeads = useMemo(
+    () => activeLeads
       .filter(lead => {
         if (leadFilter === 'attention') return needsLeadAttention(lead);
         if (leadFilter === 'new' || leadFilter === 'in_progress') return lead.status === leadFilter;
@@ -4003,7 +4206,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
         leadStatusLabels[lead.status],
       ]))
       .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
-    [leadFilter, leadSearch, state.leads],
+    [activeLeads, leadFilter, leadSearch],
   );
   const visibleLeads = showAllLeads || leadSearch ? filteredLeads : filteredLeads.slice(0, 6);
 
@@ -4024,6 +4227,97 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       notes: '',
       status: 'new',
     });
+  };
+
+  const startLeadClosure = (lead: Lead, leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => {
+    if (!leadData.startDate || !leadData.endDate) {
+      setLeadFormError('כדי לסגור פנייה צריך תאריך כניסה ויציאה. אם זו פנייה לפי פרשה, עדכני קודם לתאריכים.');
+      return;
+    }
+
+    setLeadCloseDraft({
+      lead,
+      data: { ...leadData, status: 'closed' },
+      complexId: activeComplexes[0]?.id ?? '',
+      startDate: leadData.startDate,
+      endDate: leadData.endDate,
+      commissionAmount: '',
+      commissionPaid: false,
+      error: '',
+    });
+    setEditingLeadId(null);
+    setShowNewLeadForm(false);
+  };
+
+  const saveClosedLeadBooking = async () => {
+    if (!leadCloseDraft) return;
+    if (!leadCloseDraft.complexId) {
+      setLeadCloseDraft(current => current ? { ...current, error: 'צריך לבחור מתחם.' } : current);
+      return;
+    }
+    if (!leadCloseDraft.startDate || !leadCloseDraft.endDate) {
+      setLeadCloseDraft(current => current ? { ...current, error: 'צריך למלא תאריך כניסה ויציאה.' } : current);
+      return;
+    }
+    if (leadCloseDraft.endDate < leadCloseDraft.startDate) {
+      setLeadCloseDraft(current => current ? { ...current, error: 'תאריך היציאה לא יכול להיות לפני תאריך הכניסה.' } : current);
+      return;
+    }
+    if (leadCloseDraft.commissionAmount.trim() && !hasMoneyNumber(leadCloseDraft.commissionAmount)) {
+      setLeadCloseDraft(current => current ? { ...current, error: 'עמלה צריכה לכלול מספר.' } : current);
+      return;
+    }
+
+    const updatedLead: Lead = {
+      ...leadCloseDraft.lead,
+      ...leadCloseDraft.data,
+      startDate: leadCloseDraft.startDate,
+      endDate: leadCloseDraft.endDate,
+      status: 'closed',
+      updatedAt: new Date().toISOString(),
+    };
+    const blockData = {
+      complexId: leadCloseDraft.complexId,
+      startDate: leadCloseDraft.startDate,
+      endDate: leadCloseDraft.endDate,
+      status: 'booked' as AvailabilityStatus,
+      leadId: updatedLead.id,
+      customerName: updatedLead.customerName,
+      customerPhone: updatedLead.customerPhone,
+      commissionAmount: leadCloseDraft.commissionAmount.trim() || undefined,
+      commissionPaid: leadCloseDraft.commissionPaid,
+      note: updatedLead.notes ? `נסגר מתוך פנייה: ${updatedLead.notes}` : 'נסגר מתוך פנייה',
+    };
+    const stateWithClosedLead = {
+      ...state,
+      leads: state.leads.map(lead => lead.id === updatedLead.id ? updatedLead : lead),
+    };
+
+    if (session) {
+      try {
+        const cloudLead = await updateCloudLead(session, updatedLead);
+        const cloudBlock = await insertCloudAvailability(session, blockData);
+        persist({
+          ...state,
+          leads: state.leads.map(lead => lead.id === cloudLead.id ? cloudLead : lead),
+          availabilityBlocks: [...state.availabilityBlocks, cloudBlock],
+        });
+        setLeadCloseDraft(null);
+        resetLeadForm();
+        return;
+      } catch (error) {
+        const next = createAvailabilityBlock(stateWithClosedLead, blockData);
+        persist(next);
+        setLeadCloseDraft(null);
+        resetLeadForm();
+        setLeadFormError(describeCloudSaveError(error));
+        return;
+      }
+    }
+
+    persist(createAvailabilityBlock(stateWithClosedLead, blockData));
+    setLeadCloseDraft(null);
+    resetLeadForm();
   };
 
   const saveLead = async () => {
@@ -4057,7 +4351,17 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       status: form.status,
     };
 
+    if (!existingLead && leadData.status === 'closed') {
+      setLeadFormError('כדי לסגור פנייה חדשה, שמרי אותה קודם ואז ערכי אותה לסטטוס נסגר כדי לבחור מתחם.');
+      return;
+    }
+
     if (existingLead) {
+      if (existingLead.status !== 'closed' && leadData.status === 'closed') {
+        startLeadClosure(existingLead, leadData);
+        return;
+      }
+
       const updatedLead = {
         ...existingLead,
         ...leadData,
@@ -4169,6 +4473,13 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     window.alert('פרטי הפנייה הועתקו ללוח.');
   };
 
+  const startLeadComplexShare = (lead: Lead) => {
+    setLeadComplexShareDraft({
+      lead,
+      complexId: activeComplexes[0]?.id ?? '',
+    });
+  };
+
   const renderLeadFormFields = () => (
     <>
       <div className="form-grid">
@@ -4239,7 +4550,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
               <p className="muted">מוצגות {visibleLeads.length} הפניות האחרונות. חיפוש יציג את כל התוצאות.</p>
             )}
           </div>
-          <span className="pill check">{visibleLeads.length}/{state.leads.length}</span>
+          <span className="pill check">{visibleLeads.length}/{activeLeads.length}</span>
         </div>
         <div className="form-grid" style={{ marginTop: 12 }}>
           <Field className="full" label="חיפוש לקוח" value={leadSearch} onChange={setLeadSearch} placeholder="שם, טלפון, פרשה, תאריך, סטטוס, הערה..." />
@@ -4297,6 +4608,9 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
                       <Mail size={17} />
                     </a>
                   )}
+                  <button className="secondary-btn icon-only" type="button" onClick={() => startLeadComplexShare(lead)} title="שליחת מתחם ללקוח" aria-label={`שליחת מתחם אל ${lead.customerName}`}>
+                    <Send size={17} />
+                  </button>
                   <button className="ghost-btn icon-only" type="button" onClick={() => shareLead(lead)} title="שיתוף פנייה" aria-label={`שיתוף פנייה של ${lead.customerName}`}>
                     <Share2 size={17} />
                   </button>
@@ -4322,6 +4636,111 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
           )}
         </div>
       </section>
+
+      <section className="card">
+        <div className="item-head">
+          <div>
+            <h2 className="section-title">פניות שנסגרו</h2>
+            <p className="muted">הן יורדות מהרשימה הראשית ונשמרות כאן לבדיקה מאוחרת.</p>
+          </div>
+          <button className="secondary-btn" type="button" onClick={() => setShowClosedLeads(current => !current)}>
+            {showClosedLeads ? 'הסתר' : 'הצג'} ({archivedLeads.length})
+          </button>
+        </div>
+        {showClosedLeads && (
+          <div className="list" style={{ marginTop: 12 }}>
+            {archivedLeads.length === 0 && <p className="muted">עוד אין פניות שנסגרו.</p>}
+            {archivedLeads.map(lead => {
+              const derivedStatus = closedBookedLeadIds.has(lead.id) ? 'closed' : lead.status;
+              return (
+                <div className={`list-item lead-card lead-status-${derivedStatus}`} key={lead.id}>
+                  <div className="item-head lead-card-head">
+                    <p className="item-title">{lead.customerName}</p>
+                    <span className={`pill lead-status-pill lead-status-${derivedStatus}`}>{leadStatusLabels[derivedStatus]}</span>
+                  </div>
+                  <span className="muted lead-line">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
+                  <span className="muted lead-line">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}{lead.budget ? ` · תקציב: ${lead.budget}` : ''}</span>
+                  {lead.notes && <span className="muted lead-line">{lead.notes}</span>}
+                  <div className="actions lead-actions">
+                    <button className="ghost-btn icon-only" type="button" onClick={() => editLead(lead.id)} title="עריכה" aria-label={`עריכת פנייה של ${lead.customerName}`}>
+                      <Pencil size={17} />
+                    </button>
+                    <button className="ghost-btn danger-btn icon-only" type="button" onClick={() => deleteLead(lead.id)} title="מחיקה" aria-label={`מחיקת פנייה של ${lead.customerName}`}>
+                      <Trash2 size={17} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {leadComplexShareDraft && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setLeadComplexShareDraft(null)}>
+          <section
+            className="card modal-panel lead-edit-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="share-complex-title"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="item-head">
+              <div>
+                <h2 className="section-title" id="share-complex-title">שליחת מתחם ללקוח</h2>
+                <p className="muted">בחרי מתחם, ואז פתחי WhatsApp או מייל עם הודעת גלריה מוכנה.</p>
+              </div>
+              <button className="ghost-btn icon-only" type="button" onClick={() => setLeadComplexShareDraft(null)} aria-label="סגירת שליחת מתחם">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="form-grid" style={{ marginTop: 12 }}>
+              <SelectField
+                label="מתחם"
+                value={leadComplexShareDraft.complexId}
+                options={activeComplexes.map(complex => complex.id)}
+                labels={Object.fromEntries(activeComplexes.map(complex => [complex.id, complex.name]))}
+                onChange={value => setLeadComplexShareDraft(current => current ? ({ ...current, complexId: value }) : current)}
+              />
+              <div className="catalog-preview full">
+                <p className="metric-label">לקוח</p>
+                <p className="item-title" style={{ margin: '4px 0' }}>{leadComplexShareDraft.lead.customerName}</p>
+                <p className="muted" style={{ margin: 0 }}>{leadComplexShareDraft.lead.customerPhone || 'אין טלפון'}{leadShareEmail ? ` · ${leadShareEmail}` : ''}</p>
+              </div>
+              {leadShareComplex && (
+                <div className="catalog-preview full">
+                  <p className="metric-label">יישלח ללקוח</p>
+                  <p className="item-title" style={{ margin: '4px 0' }}>{leadShareComplex.name}</p>
+                  <p className="muted" style={{ margin: 0 }}>{getComplexShareableMediaUrls(leadShareComplex).length} קישורי מדיה זמינים לשליחה</p>
+                </div>
+              )}
+            </div>
+            <div className="actions" style={{ marginTop: 12 }}>
+              {leadShareComplex ? (
+                <>
+                  <a className="primary-btn" href={getLeadComplexWhatsappHref(leadComplexShareDraft.lead, leadShareComplex)} target="_blank" rel="noreferrer">
+                    <MessageCircle size={16} /> WhatsApp
+                  </a>
+                  {leadShareEmail ? (
+                    <a className="secondary-btn" href={getLeadComplexMailHref(leadComplexShareDraft.lead, leadShareComplex, leadShareEmail)}>
+                      <Mail size={16} /> מייל
+                    </a>
+                  ) : (
+                    <button className="secondary-btn" type="button" disabled>
+                      <Mail size={16} /> אין מייל
+                    </button>
+                  )}
+                </>
+              ) : (
+                <span className="muted">אין מתחמים פעילים לשליחה.</span>
+              )}
+              <button className="ghost-btn" type="button" onClick={() => setLeadComplexShareDraft(null)}>
+                סגור
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {editingLeadId && (
         <div className="modal-backdrop" role="presentation" onClick={resetLeadForm}>
@@ -4349,6 +4768,82 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
                 <Pencil size={16} /> עדכן פנייה
               </button>
               <button className="secondary-btn" type="button" onClick={resetLeadForm}>
+                ביטול
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {leadCloseDraft && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setLeadCloseDraft(null)}>
+          <section
+            className="card modal-panel lead-edit-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="close-lead-title"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="item-head">
+              <div>
+                <h2 className="section-title" id="close-lead-title">סגירת פנייה</h2>
+                <p className="muted">בחרי מתחם, ואסמן אותו כתפוס בתאריכי הלקוח.</p>
+              </div>
+              <button className="ghost-btn icon-only" type="button" onClick={() => setLeadCloseDraft(null)} aria-label="ביטול סגירת פנייה">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="form-grid" style={{ marginTop: 12 }}>
+              <SelectField
+                label="מתחם"
+                value={leadCloseDraft.complexId}
+                options={activeComplexes.map(complex => complex.id)}
+                labels={Object.fromEntries(activeComplexes.map(complex => [complex.id, complex.name]))}
+                onChange={value => setLeadCloseDraft(current => current ? ({ ...current, complexId: value, error: '' }) : current)}
+              />
+              <DateField
+                label="כניסה"
+                value={leadCloseDraft.startDate}
+                min=""
+                onChange={value => setLeadCloseDraft(current => current ? ({
+                  ...current,
+                  startDate: value,
+                  endDate: current.endDate < value ? value : current.endDate,
+                  error: '',
+                }) : current)}
+              />
+              <DateField
+                label="יציאה"
+                value={leadCloseDraft.endDate}
+                min={leadCloseDraft.startDate}
+                onChange={value => setLeadCloseDraft(current => current ? ({ ...current, endDate: value, error: '' }) : current)}
+              />
+              <Field
+                label="עמלה שלקחנו"
+                value={leadCloseDraft.commissionAmount}
+                onChange={value => setLeadCloseDraft(current => current ? ({ ...current, commissionAmount: value, error: '' }) : current)}
+                placeholder="לדוגמה: 1,500"
+              />
+              <label className="owner-select">
+                <input
+                  type="checkbox"
+                  checked={leadCloseDraft.commissionPaid}
+                  onChange={event => setLeadCloseDraft(current => current ? ({ ...current, commissionPaid: event.target.checked, error: '' }) : current)}
+                />
+                <span>העמלה שולמה</span>
+              </label>
+              <div className="catalog-preview full">
+                <p className="metric-label">לקוח</p>
+                <p className="item-title" style={{ margin: '4px 0' }}>{leadCloseDraft.data.customerName}</p>
+                <p className="muted" style={{ margin: 0 }}>{leadCloseDraft.data.customerPhone} · {leadCloseDraft.data.guests} אורחים</p>
+              </div>
+            </div>
+            {leadCloseDraft.error && <p className="form-error" style={{ marginTop: 12 }}>{leadCloseDraft.error}</p>}
+            <div className="actions" style={{ marginTop: 12 }}>
+              <button className="primary-btn" type="button" onClick={saveClosedLeadBooking}>
+                <CalendarCheck size={16} /> סגור וסמן תפוס
+              </button>
+              <button className="secondary-btn" type="button" onClick={() => setLeadCloseDraft(null)}>
                 ביטול
               </button>
             </div>

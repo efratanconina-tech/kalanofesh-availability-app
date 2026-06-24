@@ -5,7 +5,25 @@ import './styles.css';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+    let refreshing = false;
+
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+
+    navigator.serviceWorker.register('/sw.js').then(registration => {
+      registration.update().catch(() => undefined);
+      registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
+      registration.addEventListener('updatefound', () => {
+        registration.installing?.addEventListener('statechange', () => {
+          if (registration.waiting) {
+            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+    }).catch(() => undefined);
   });
 }
 

@@ -108,6 +108,44 @@ async function request<T>(path: string, options: RequestInit = {}, session?: Clo
   return await response.json() as T;
 }
 
+function getPostgrestMissingColumn(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+
+  try {
+    const data = JSON.parse(error.message) as { code?: string; message?: string };
+    if (data.code !== 'PGRST204') return undefined;
+    const match = data.message?.match(/'([^']+)' column/);
+    return match?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+async function requestWithMissingColumnFallback<T>(
+  path: string,
+  row: Record<string, unknown>,
+  options: RequestInit,
+  session: CloudSession,
+): Promise<T> {
+  const fallbackRow = { ...row };
+  const removedColumns = new Set<string>();
+
+  while (true) {
+    try {
+      return await request<T>(path, {
+        ...options,
+        body: JSON.stringify(fallbackRow),
+      }, session);
+    } catch (error) {
+      const missingColumn = getPostgrestMissingColumn(error);
+      if (!missingColumn || !(missingColumn in fallbackRow) || removedColumns.has(missingColumn)) throw error;
+
+      removedColumns.add(missingColumn);
+      delete fallbackRow[missingColumn];
+    }
+  }
+}
+
 export async function signIn(email: string, password: string): Promise<CloudSession> {
   const { url, key } = requireConfig();
   const response = await fetch(`${url}/auth/v1/token?grant_type=password`, {
@@ -201,21 +239,22 @@ export async function insertCloudTask(
 }
 
 export async function insertCloudComplex(session: CloudSession, complex: Complex): Promise<Complex> {
-  const rows = await request<ComplexRow[]>('/rest/v1/complexes', {
+  const rows = await requestWithMissingColumnFallback<ComplexRow[]>('/rest/v1/complexes', {
+    slug: complex.id,
+    ...toComplexRow(complex),
+  }, {
     method: 'POST',
-    body: JSON.stringify({ slug: complex.id, ...toComplexRow(complex) }),
   }, session);
 
-  return fromComplexRow(rows[0]);
+  return { ...complex, ...fromComplexRow(rows[0]) };
 }
 
 export async function updateCloudComplex(session: CloudSession, complex: Complex): Promise<Complex> {
-  const rows = await request<ComplexRow[]>(`/rest/v1/complexes?id=eq.${complex.id}`, {
+  const rows = await requestWithMissingColumnFallback<ComplexRow[]>(`/rest/v1/complexes?id=eq.${complex.id}`, toComplexRow(complex), {
     method: 'PATCH',
-    body: JSON.stringify(toComplexRow(complex)),
   }, session);
 
-  return fromComplexRow(rows[0]);
+  return { ...complex, ...fromComplexRow(rows[0]) };
 }
 
 export async function updateCloudLead(session: CloudSession, lead: Lead): Promise<Lead> {
@@ -488,12 +527,6 @@ function toComplexRow(data: Complex) {
     video_url: data.videoUrl,
     gallery_urls: data.galleryUrls,
     sales_note: data.salesNote,
-    price_weekday: data.priceWeekday,
-    price_shabbat: data.priceShabbat,
-    price_weekend: data.priceWeekend,
-    price_bein_hazmanim: data.priceBeinHazmanim,
-    price_holiday: data.priceHoliday,
-    price_notes: data.priceNotes,
     internal_notes: data.internalNotes,
     shabbat_notes: data.shabbatNotes,
     active: data.active,
