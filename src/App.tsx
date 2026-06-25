@@ -3226,6 +3226,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   const renderClosureBlock = (block: AvailabilityBlock) => {
     const complex = state.complexes.find(item => item.id === block.complexId);
     const isExpanded = expandedClosureIds.includes(block.id);
+    const isOverdueUnpaid = !block.commissionPaid && isValidYMD(block.endDate) && block.endDate < today;
     const summary = [
       block.commissionAmount ? `עמלה: ${block.commissionAmount}` : '',
       block.commissionPaid ? 'שולם' : '',
@@ -3234,11 +3235,20 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     ].filter(Boolean).join(' · ');
 
     return (
-      <div className={`list-item closure-item ${isExpanded ? 'expanded' : 'collapsed'} ${block.commissionPaid ? 'paid-closure' : ''}`} key={block.id}>
+      <div
+        className={[
+          'list-item closure-item',
+          isExpanded ? 'expanded' : 'collapsed',
+          block.commissionPaid ? 'paid-closure' : '',
+          isOverdueUnpaid ? 'overdue-closure' : '',
+        ].filter(Boolean).join(' ')}
+        key={block.id}
+      >
         <div className="item-head">
           <div>
             <p className="item-title">{block.customerName || 'סגירה ללא שם'}</p>
             <span className="muted">{complex?.name ?? 'מתחם'} · {formatDateLine(block.startDate, block.endDate)}</span>
+            {isOverdueUnpaid && <span className="closure-alert">יציאה עברה - טרם שולם</span>}
             {summary && <span className="muted">{summary}</span>}
           </div>
           <div className="actions">
