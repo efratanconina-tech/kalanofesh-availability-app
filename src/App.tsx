@@ -2896,6 +2896,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
   const [expandedClosureIds, setExpandedClosureIds] = useState<string[]>([]);
   const [showAllArrivals, setShowAllArrivals] = useState(false);
   const [showAllClosures, setShowAllClosures] = useState(false);
+  const [showPaidClosures, setShowPaidClosures] = useState(false);
   const [notificationStatus, setNotificationStatus] = useState(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
@@ -2923,12 +2924,23 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
         block.status !== 'available' &&
         Boolean(block.customerName || block.customerPhone || block.commissionAmount || block.commissionPaid || block.invoiceSent || block.invoiceStatus === 'end_of_stay')
       )
-      .sort((a, b) => b.startDate.localeCompare(a.startDate))
-      .slice(0, 80),
+      .sort((a, b) =>
+        a.startDate.localeCompare(b.startDate) ||
+        a.endDate.localeCompare(b.endDate) ||
+        (a.customerName ?? '').localeCompare(b.customerName ?? '')
+      ),
     [state.availabilityBlocks],
   );
-  const visibleClosureBlocks = showAllClosures ? closureBlocks : closureBlocks.slice(0, 8);
-  const unpaidCommissionBlocks = closureBlocks.filter(block => !block.commissionPaid && parseMoneyAmount(block.commissionAmount) > 0);
+  const openClosureBlocks = useMemo(
+    () => closureBlocks.filter(block => !block.commissionPaid),
+    [closureBlocks],
+  );
+  const paidClosureBlocks = useMemo(
+    () => closureBlocks.filter(block => block.commissionPaid),
+    [closureBlocks],
+  );
+  const visibleClosureBlocks = showAllClosures ? openClosureBlocks : openClosureBlocks.slice(0, 8);
+  const unpaidCommissionBlocks = openClosureBlocks.filter(block => parseMoneyAmount(block.commissionAmount) > 0);
   const moneyToCollect = unpaidCommissionBlocks.reduce((sum, block) => sum + parseMoneyAmount(block.commissionAmount), 0);
   const reminders = allEvents.filter(event => event.date === today || event.reminderDate === today);
   const eventsByDate = useMemo(() => {
@@ -3211,6 +3223,70 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     cancelEditingArrival();
   };
 
+  const renderClosureBlock = (block: AvailabilityBlock) => {
+    const complex = state.complexes.find(item => item.id === block.complexId);
+    const isExpanded = expandedClosureIds.includes(block.id);
+    const summary = [
+      block.commissionAmount ? `עמלה: ${block.commissionAmount}` : '',
+      block.commissionPaid ? 'שולם' : '',
+      block.invoiceStatus === 'end_of_stay' ? 'חשבונית בסוף השהות' : '',
+      block.invoiceSent || block.invoiceStatus === 'sent' ? 'נשלחה חשבונית' : '',
+    ].filter(Boolean).join(' · ');
+
+    return (
+      <div className={`list-item closure-item ${isExpanded ? 'expanded' : 'collapsed'} ${block.commissionPaid ? 'paid-closure' : ''}`} key={block.id}>
+        <div className="item-head">
+          <div>
+            <p className="item-title">{block.customerName || 'סגירה ללא שם'}</p>
+            <span className="muted">{complex?.name ?? 'מתחם'} · {formatDateLine(block.startDate, block.endDate)}</span>
+            {summary && <span className="muted">{summary}</span>}
+          </div>
+          <div className="actions">
+            <button
+              className="ghost-btn icon-only catalog-toggle"
+              type="button"
+              aria-expanded={isExpanded}
+              aria-label={isExpanded ? 'סגור פרטי סגירה' : 'פתח פרטי סגירה'}
+              title={isExpanded ? 'סגירת פרטים' : 'פתיחת פרטים'}
+              onClick={() => toggleClosureDetails(block.id)}
+            >
+              <ChevronDown size={18} />
+            </button>
+          </div>
+        </div>
+        {isExpanded && (
+          <div className="closure-details">
+            {block.customerPhone && <span className="muted">{block.customerPhone}</span>}
+            {block.note && <span className="muted">{block.note}</span>}
+            <div className="form-grid">
+              <Field
+                label="עמלה"
+                value={block.commissionAmount ?? ''}
+                onChange={value => updateClosureBlock(block, { commissionAmount: value })}
+                placeholder="לדוגמה: 1,500"
+              />
+              <label className="owner-select">
+                <input
+                  type="checkbox"
+                  checked={Boolean(block.commissionPaid)}
+                  onChange={event => updateClosureBlock(block, { commissionPaid: event.target.checked })}
+                />
+                <span>שולם</span>
+              </label>
+              <SelectField
+                label="חשבונית"
+                value={block.invoiceStatus ?? (block.invoiceSent ? 'sent' : 'not_sent')}
+                options={Object.keys(invoiceStatusLabels)}
+                labels={invoiceStatusLabels}
+                onChange={value => updateClosureBlock(block, { invoiceStatus: value as InvoiceStatus, invoiceSent: value === 'sent' })}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="grid">
       <section className="card">
@@ -3468,9 +3544,9 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
         <div className="item-head">
           <div>
             <h2 className="section-title">רשימת סגירות</h2>
-            <p className="muted">כאן אפשר לעדכן עמלה, תשלום וחשבונית לסגירות קיימות.</p>
+            <p className="muted">סגירות שלא שולמו, מסודרות לפי תאריך הכניסה. מה ששולם נשמר למטה בחלונית נפתחת.</p>
           </div>
-          <span className="pill check">{visibleClosureBlocks.length}/{closureBlocks.length} סגירות</span>
+          <span className="pill check">{visibleClosureBlocks.length}/{openClosureBlocks.length} פתוחות</span>
         </div>
         <div className="catalog-preview" style={{ marginTop: 12 }}>
           <p className="metric-label">עוד כסף שאמור להיכנס</p>
@@ -3480,79 +3556,28 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
           </p>
         </div>
         <div className="list" style={{ marginTop: 12 }}>
-          {closureBlocks.length === 0 && <p className="muted">אין סגירות להצגה.</p>}
-          {visibleClosureBlocks.map(block => {
-            const complex = state.complexes.find(item => item.id === block.complexId);
-            const isExpanded = expandedClosureIds.includes(block.id);
-            const summary = [
-              block.commissionAmount ? `עמלה: ${block.commissionAmount}` : '',
-              block.commissionPaid ? 'שולם' : '',
-              block.invoiceStatus === 'end_of_stay' ? 'חשבונית בסוף השהות' : '',
-              block.invoiceSent || block.invoiceStatus === 'sent' ? 'נשלחה חשבונית' : '',
-            ].filter(Boolean).join(' · ');
-
-            return (
-              <div className={`list-item closure-item ${isExpanded ? 'expanded' : 'collapsed'}`} key={block.id}>
-                <div className="item-head">
-                  <div>
-                    <p className="item-title">{block.customerName || 'סגירה ללא שם'}</p>
-                    <span className="muted">{complex?.name ?? 'מתחם'} · {formatDateLine(block.startDate, block.endDate)}</span>
-                    {summary && <span className="muted">{summary}</span>}
-                  </div>
-                  <div className="actions">
-                    <button
-                      className="ghost-btn icon-only catalog-toggle"
-                      type="button"
-                      aria-expanded={isExpanded}
-                      aria-label={isExpanded ? 'סגור פרטי סגירה' : 'פתח פרטי סגירה'}
-                      title={isExpanded ? 'סגירת פרטים' : 'פתיחת פרטים'}
-                      onClick={() => toggleClosureDetails(block.id)}
-                    >
-                      <ChevronDown size={18} />
-                    </button>
-                  </div>
-                </div>
-                {isExpanded && (
-                  <div className="closure-details">
-                    {block.customerPhone && <span className="muted">{block.customerPhone}</span>}
-                    {block.note && <span className="muted">{block.note}</span>}
-                    <div className="form-grid">
-                      <Field
-                        label="עמלה"
-                        value={block.commissionAmount ?? ''}
-                        onChange={value => updateClosureBlock(block, { commissionAmount: value })}
-                        placeholder="לדוגמה: 1,500"
-                      />
-                      <label className="owner-select">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(block.commissionPaid)}
-                          onChange={event => updateClosureBlock(block, { commissionPaid: event.target.checked })}
-                        />
-                        <span>שולם</span>
-                      </label>
-                      <SelectField
-                        label="חשבונית"
-                        value={block.invoiceStatus ?? (block.invoiceSent ? 'sent' : 'not_sent')}
-                        options={Object.keys(invoiceStatusLabels)}
-                        labels={invoiceStatusLabels}
-                        onChange={value => updateClosureBlock(block, { invoiceStatus: value as InvoiceStatus, invoiceSent: value === 'sent' })}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {closureBlocks.length > visibleClosureBlocks.length && (
+          {openClosureBlocks.length === 0 && <p className="muted">אין סגירות פתוחות להצגה.</p>}
+          {visibleClosureBlocks.map(renderClosureBlock)}
+          {openClosureBlocks.length > visibleClosureBlocks.length && (
             <button className="ghost-btn full-width" type="button" onClick={() => setShowAllClosures(true)}>
-              הצג עוד {closureBlocks.length - visibleClosureBlocks.length} סגירות
+              הצג עוד {openClosureBlocks.length - visibleClosureBlocks.length} סגירות
             </button>
           )}
-          {showAllClosures && closureBlocks.length > 8 && (
+          {showAllClosures && openClosureBlocks.length > 8 && (
             <button className="ghost-btn full-width" type="button" onClick={() => setShowAllClosures(false)}>
               צמצם לרשימה קצרה
             </button>
+          )}
+        </div>
+        <div className="paid-closures-panel">
+          <button className="ghost-btn full-width paid-closures-toggle" type="button" onClick={() => setShowPaidClosures(current => !current)}>
+            {showPaidClosures ? 'הסתר' : 'הצג'} סגירות ששולמו ({paidClosureBlocks.length})
+          </button>
+          {showPaidClosures && (
+            <div className="list paid-closures-list">
+              {paidClosureBlocks.length === 0 && <p className="muted">אין עדיין סגירות שסומנו כשולמו.</p>}
+              {paidClosureBlocks.map(renderClosureBlock)}
+            </div>
           )}
         </div>
       </section>

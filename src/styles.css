@@ -1175,6 +1175,23 @@ button {
   padding-top: 12px;
 }
 
+.paid-closures-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  border-top: 1px solid rgba(100, 116, 139, 0.12);
+  padding-top: 14px;
+}
+
+.paid-closures-list {
+  margin-top: 0;
+}
+
+.paid-closure {
+  border-color: rgba(34, 197, 94, 0.18);
+  background: rgba(34, 197, 94, 0.035);
+}
+
 .catalog-image,
 .catalog-placeholder {
   width: 100%;
