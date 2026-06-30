@@ -2109,11 +2109,7 @@ function CatalogView({ state, persist, session }: { state: AppState; persist: (s
 
     if (session) {
       try {
-        const cloudComplex = await updateCloudComplex(session, updated);
-        persist({
-          ...state,
-          complexes: state.complexes.map(item => item.id === complex.id ? cloudComplex : item),
-        });
+        await updateCloudComplex(session, updated);
       } catch {
         // Local save already happened. Cloud sync will be retried by the next save/login.
       }
