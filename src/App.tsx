@@ -4645,6 +4645,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
                   <p className="item-title">{lead.customerName}</p>
                   <div className="actions lead-meta-pills">
                     {leadNeedsAttention && <span className="pill attention">דורש תשומת לב</span>}
+                    {targetComplex && <span className="pill target-complex">מתחם: {targetComplex.name}</span>}
                     <span className={`pill budget ${lead.budget ? '' : 'missing'}`}>
                       {lead.budget ? `תקציב: ${lead.budget}` : 'ללא תקציב'}
                     </span>
@@ -4653,7 +4654,6 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
                 </div>
                 <span className="muted lead-line">נפתחה: {lead.createdAt ? `${formatGregorianDate(lead.createdAt.slice(0, 10))} · ${getLeadAgeLabel(lead)}` : 'לא ידוע'}</span>
                 <span className="muted lead-line">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
-                {targetComplex && <span className="muted lead-line">מכוונת למתחם: {targetComplex.name}</span>}
                 <span className="muted lead-line">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}{lead.budget ? ` · תקציב: ${lead.budget}` : ''}</span>
                 {lead.notes && <span className="muted lead-line">{lead.notes}</span>}
                 <div className="actions lead-actions">
@@ -4717,10 +4717,15 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
                 <div className={`list-item lead-card lead-status-${derivedStatus}`} key={lead.id}>
                   <div className="item-head lead-card-head">
                     <p className="item-title">{lead.customerName}</p>
-                    <span className={`pill lead-status-pill lead-status-${derivedStatus}`}>{leadStatusLabels[derivedStatus]}</span>
+                    <div className="actions lead-meta-pills">
+                      {targetComplex && <span className="pill target-complex">מתחם: {targetComplex.name}</span>}
+                      <span className={`pill budget ${lead.budget ? '' : 'missing'}`}>
+                        {lead.budget ? `תקציב: ${lead.budget}` : 'ללא תקציב'}
+                      </span>
+                      <span className={`pill lead-status-pill lead-status-${derivedStatus}`}>{leadStatusLabels[derivedStatus]}</span>
+                    </div>
                   </div>
                   <span className="muted lead-line">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
-                  {targetComplex && <span className="muted lead-line">מכוונת למתחם: {targetComplex.name}</span>}
                   <span className="muted lead-line">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}{lead.budget ? ` · תקציב: ${lead.budget}` : ''}</span>
                   {lead.notes && <span className="muted lead-line">{lead.notes}</span>}
                   <div className="actions lead-actions">

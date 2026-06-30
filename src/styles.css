@@ -704,6 +704,13 @@ button {
   border-color: rgba(100, 116, 139, 0.16);
 }
 
+.pill.target-complex {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid rgba(37, 99, 235, 0.24);
+  font-weight: 900;
+}
+
 .price-pills {
   display: flex;
   flex-wrap: wrap;
