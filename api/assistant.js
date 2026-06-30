@@ -13,6 +13,8 @@ function limitText(value, maxLength = MAX_MESSAGE_CHARS) {
 }
 
 function compactState(state) {
+  const complexNameById = new Map((state?.complexes || []).map(complex => [complex.id, complex.name]));
+
   return {
     today: new Date().toISOString().slice(0, 10),
     shabbatParshas: state?.shabbatParshas || [],
@@ -38,6 +40,7 @@ function compactState(state) {
     })),
     leads: limitItems(state?.leads).map(lead => ({
       customerName: lead.customerName,
+      targetComplex: lead.targetComplexId ? complexNameById.get(lead.targetComplexId) || lead.targetComplexId : undefined,
       startDate: lead.startDate,
       endDate: lead.endDate,
       parsha: lead.parsha,

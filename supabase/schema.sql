@@ -56,6 +56,7 @@ create table if not exists public.leads (
   guests integer not null default 0,
   area_preference text not null default 'לא משנה',
   vacation_type text not null default 'לא משנה',
+  target_complex_id uuid references public.complexes(id) on delete set null,
   budget text,
   notes text,
   status text not null default 'new' check (status in ('new', 'in_progress', 'waiting', 'closed', 'irrelevant')),
@@ -68,6 +69,7 @@ create table if not exists public.leads (
 alter table public.leads alter column start_date drop not null;
 alter table public.leads alter column end_date drop not null;
 alter table public.leads add column if not exists parsha text;
+alter table public.leads add column if not exists target_complex_id uuid references public.complexes(id) on delete set null;
 alter table public.leads drop constraint if exists leads_dates_valid;
 alter table public.leads add constraint leads_dates_valid check (end_date is null or start_date is null or end_date >= start_date);
 

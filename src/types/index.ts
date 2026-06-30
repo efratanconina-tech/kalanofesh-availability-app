@@ -64,6 +64,7 @@ export interface Lead {
   guests: number;
   areaPreference: string;
   vacationType: string;
+  targetComplexId?: string;
   budget?: string;
   notes?: string;
   status: LeadStatus;

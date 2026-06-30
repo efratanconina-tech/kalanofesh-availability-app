@@ -67,7 +67,7 @@ OPENAI_MAX_MESSAGE_CHARS=4000
 - מומלץ לבחור גם Preview ו-Development אם Vercel מציע.
 - אחרי שינוי משתנים חייבים Redeploy.
 - ChatGPT Plus/Pro אינו אותו תקציב כמו OpenAI API. הצ׳אט באפליקציה משתמש בקרדיט/חיוב של חשבון OpenAI Platform שאליו שייך `OPENAI_API_KEY`.
-- כדי שלא יעבור תקציב, להגדיר ב-OpenAI Platform מגבלת Usage/Budget של $10 לפרויקט של המפתח. המשתנים למעלה גם מצמצמים את כמות הטוקנים בכל קריאה.
+- כדי שלא יעבור תקציב, להגדיר ב-OpenAI Platform מגבלת Usage/Budget של $20 לפרויקט של המפתח. המשתנים למעלה גם מצמצמים את כמות הטוקנים בכל קריאה.
 
 ## 5. Vercel - Redeploy
 

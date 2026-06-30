@@ -353,6 +353,7 @@ interface LeadRow {
   guests: number;
   area_preference: string;
   vacation_type: string;
+  target_complex_id?: string | null;
   budget?: string | null;
   notes?: string | null;
   status: Lead['status'];
@@ -438,6 +439,7 @@ function fromLeadRow(row: LeadRow): Lead {
     guests: row.guests,
     areaPreference: row.area_preference,
     vacationType: row.vacation_type,
+    targetComplexId: row.target_complex_id ?? undefined,
     budget: row.budget ?? undefined,
     notes: row.notes ?? undefined,
     status: row.status,
@@ -543,6 +545,7 @@ function toLeadRow(data: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) {
     guests: data.guests,
     area_preference: data.areaPreference,
     vacation_type: data.vacationType,
+    target_complex_id: data.targetComplexId || null,
     budget: data.budget,
     notes: data.notes,
     status: data.status,

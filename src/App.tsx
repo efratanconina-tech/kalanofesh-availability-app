@@ -633,6 +633,12 @@ function buildLeadShareText(lead: Lead): string {
   ].filter(Boolean).join('\n');
 }
 
+function getLeadTargetComplex(lead: Lead, complexes: Complex[]): Complex | undefined {
+  return lead.targetComplexId
+    ? complexes.find(complex => complex.id === lead.targetComplexId)
+    : undefined;
+}
+
 function extractEmail(value: string): string {
   return value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? '';
 }
@@ -2975,14 +2981,11 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
 
     const key = `kalanofesh-reminders-${today}`;
     const sent = new Set((localStorage.getItem(key) || '').split(',').filter(Boolean));
-    reminders.forEach(reminder => {
+    reminders.filter(reminder => reminder.type === 'arrival').forEach(reminder => {
       if (sent.has(reminder.id)) return;
-      const typeLabel = reminder.type === 'arrival' ? 'כניסה' : 'יציאה';
       const timing = reminder.date === today ? 'היום' : 'בעוד 3 ימים';
-      const invoiceReminder = reminder.type === 'departure' && reminder.date === today && reminder.invoiceStatus === 'end_of_stay';
-      const amountText = reminder.commissionAmount ? ` | ע"ס ${reminder.commissionAmount}` : '';
-      void showAppNotification(`קלנופש: ${typeLabel} ${timing}`, {
-        body: `${reminder.customerName} - ${reminder.complexName}${invoiceReminder ? ` | לשלוח חשבונית${amountText}` : ''}`,
+      void showAppNotification(`קלנופש: כניסה ${timing}`, {
+        body: `${reminder.customerName} - ${reminder.complexName}`,
         tag: reminder.id,
       });
       sent.add(reminder.id);
@@ -2996,7 +2999,7 @@ function StaysView({ state, persist, session }: { state: AppState; persist: (sta
     setNotificationStatus(permission);
     if (permission === 'granted') {
       void showAppNotification('קלנופש: התראות הופעלו', {
-        body: 'מעכשיו אשלח תזכורות על כניסות, יציאות וחשבוניות סוף שהות כשהאפליקציה פעילה/מותקנת.',
+        body: 'מעכשיו אשלח תזכורות על כניסות בלבד כשהאפליקציה פעילה/מותקנת. יציאות יסומנו בלוח.',
         tag: 'kalanofesh-notifications-enabled',
       });
     }
@@ -4184,11 +4187,20 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     guests: '20',
     areaPreference: 'לא משנה',
     vacationType: 'לא משנה',
+    targetComplexId: '',
     budget: '',
     notes: '',
     status: 'new' as LeadStatus,
   });
   const activeComplexes = useMemo(() => state.complexes.filter(complex => complex.active), [state.complexes]);
+  const complexSelectOptions = useMemo(() => ['', ...activeComplexes.map(complex => complex.id)], [activeComplexes]);
+  const complexSelectLabels = useMemo(
+    () => ({
+      '': 'ללא מתחם מסוים',
+      ...Object.fromEntries(activeComplexes.map(complex => [complex.id, complex.name])),
+    }),
+    [activeComplexes],
+  );
   const leadShareComplex = leadComplexShareDraft
     ? activeComplexes.find(complex => complex.id === leadComplexShareDraft.complexId) ?? activeComplexes[0]
     : undefined;
@@ -4230,6 +4242,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       .filter(lead => matchesSearch(leadSearch, [
         lead.customerName,
         lead.customerPhone,
+        getLeadTargetComplex(lead, state.complexes)?.name,
         lead.parsha,
         lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : undefined,
         lead.createdAt ? formatGregorianDate(lead.createdAt.slice(0, 10)) : undefined,
@@ -4241,7 +4254,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
         leadStatusLabels[lead.status],
       ]))
       .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
-    [activeLeads, leadFilter, leadSearch],
+    [activeLeads, leadFilter, leadSearch, state.complexes],
   );
   const visibleLeads = showAllLeads || leadSearch ? filteredLeads : filteredLeads.slice(0, 6);
 
@@ -4258,6 +4271,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       guests: '20',
       areaPreference: 'לא משנה',
       vacationType: 'לא משנה',
+      targetComplexId: '',
       budget: '',
       notes: '',
       status: 'new',
@@ -4273,7 +4287,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
     setLeadCloseDraft({
       lead,
       data: { ...leadData, status: 'closed' },
-      complexId: activeComplexes[0]?.id ?? '',
+      complexId: leadData.targetComplexId || (activeComplexes[0]?.id ?? ''),
       startDate: leadData.startDate,
       endDate: leadData.endDate,
       commissionAmount: '',
@@ -4381,6 +4395,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       guests: Number(form.guests || 0),
       areaPreference: form.areaPreference,
       vacationType: form.vacationType,
+      targetComplexId: form.targetComplexId || undefined,
       budget: form.budget,
       notes: form.notes,
       status: form.status,
@@ -4461,6 +4476,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
       guests: String(lead.guests || 0),
       areaPreference: lead.areaPreference,
       vacationType: lead.vacationType,
+      targetComplexId: lead.targetComplexId ?? '',
       budget: lead.budget ?? '',
       notes: lead.notes ?? '',
       status: lead.status,
@@ -4511,7 +4527,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
   const startLeadComplexShare = (lead: Lead) => {
     setLeadComplexShareDraft({
       lead,
-      complexId: activeComplexes[0]?.id ?? '',
+      complexId: lead.targetComplexId || (activeComplexes[0]?.id ?? ''),
     });
   };
 
@@ -4532,6 +4548,13 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
         <Field label="אורחים" value={form.guests} type="number" min="1" onChange={value => setForm({ ...form, guests: value })} />
         <SelectField label="אזור" value={form.areaPreference} options={areaPreferenceOptions} onChange={value => setForm({ ...form, areaPreference: value })} />
         <SelectField label="סוג נופש" value={form.vacationType} options={vacationTypeOptions} onChange={value => setForm({ ...form, vacationType: value })} />
+        <SelectField
+          label="מתחם אופציונלי"
+          value={form.targetComplexId}
+          options={complexSelectOptions}
+          labels={complexSelectLabels}
+          onChange={value => setForm({ ...form, targetComplexId: value })}
+        />
         <Field label="תקציב" value={form.budget} onChange={value => setForm({ ...form, budget: value })} />
         <SelectField
           label="סטטוס"
@@ -4614,6 +4637,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
           {visibleLeads.map(lead => {
             const leadEmail = getLeadEmail(lead);
             const leadNeedsAttention = needsLeadAttention(lead);
+            const targetComplex = getLeadTargetComplex(lead, state.complexes);
 
             return (
               <div className={`list-item lead-card lead-status-${lead.status} ${leadNeedsAttention ? 'lead-attention' : ''}`} key={lead.id}>
@@ -4629,6 +4653,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
                 </div>
                 <span className="muted lead-line">נפתחה: {lead.createdAt ? `${formatGregorianDate(lead.createdAt.slice(0, 10))} · ${getLeadAgeLabel(lead)}` : 'לא ידוע'}</span>
                 <span className="muted lead-line">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
+                {targetComplex && <span className="muted lead-line">מכוונת למתחם: {targetComplex.name}</span>}
                 <span className="muted lead-line">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}{lead.budget ? ` · תקציב: ${lead.budget}` : ''}</span>
                 {lead.notes && <span className="muted lead-line">{lead.notes}</span>}
                 <div className="actions lead-actions">
@@ -4687,6 +4712,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
             {archivedLeads.length === 0 && <p className="muted">עוד אין פניות שנסגרו.</p>}
             {archivedLeads.map(lead => {
               const derivedStatus = closedBookedLeadIds.has(lead.id) ? 'closed' : lead.status;
+              const targetComplex = getLeadTargetComplex(lead, state.complexes);
               return (
                 <div className={`list-item lead-card lead-status-${derivedStatus}`} key={lead.id}>
                   <div className="item-head lead-card-head">
@@ -4694,6 +4720,7 @@ function LeadsView({ state, persist, session }: { state: AppState; persist: (sta
                     <span className={`pill lead-status-pill lead-status-${derivedStatus}`}>{leadStatusLabels[derivedStatus]}</span>
                   </div>
                   <span className="muted lead-line">{lead.parsha ? `פרשה: ${lead.parsha}` : lead.startDate ? formatDateLine(lead.startDate, lead.endDate) : 'תאריך לא נקבע'}</span>
+                  {targetComplex && <span className="muted lead-line">מכוונת למתחם: {targetComplex.name}</span>}
                   <span className="muted lead-line">{lead.customerPhone} · {lead.guests} אורחים · {lead.vacationType}{lead.budget ? ` · תקציב: ${lead.budget}` : ''}</span>
                   {lead.notes && <span className="muted lead-line">{lead.notes}</span>}
                   <div className="actions lead-actions">
